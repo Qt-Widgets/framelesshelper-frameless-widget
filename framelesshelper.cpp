@@ -27,69 +27,63 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QMargins>
-#include <QVariant>
 #ifdef QT_WIDGETS_LIB
 #include <QWidget>
 #endif
+#ifdef QT_QUICK_LIB
+#include <QQuickItem>
+#endif
+#include <QEvent>
+#include <QMouseEvent>
+#include <QTouchEvent>
 #include <QWindow>
 #include <qpa/qplatformnativeinterface.h>
 
-#ifdef Q_OS_WINDOWS
-#include "winnativeeventfilter.h"
-#else
-#include <QEvent>
-#include <QMouseEvent>
-#ifdef QT_WIDGETS_LIB
-#include <QStyle>
-#include <QStyleOption>
-#endif
-#include <QTouchEvent>
-#endif
-
 Q_DECLARE_METATYPE(QMargins)
 
-FramelessHelper::FramelessHelper(QObject *parent) : QObject(parent) {
-    connect(this, &FramelessHelper::titlebarHeightChanged, this,
-            &FramelessHelper::updateQtFrame_internal);
-    connect(this, &FramelessHelper::framelessWindowsChanged,
-            [this]() { updateQtFrame_internal(m_titlebarHeight); });
-#ifdef Q_OS_WINDOWS
-    m_borderWidth = WinNativeEventFilter::getSystemMetric(
-        nullptr, WinNativeEventFilter::SystemMetric::BorderWidth, false);
-    m_borderHeight = WinNativeEventFilter::getSystemMetric(
-        nullptr, WinNativeEventFilter::SystemMetric::BorderHeight, false);
-    m_titlebarHeight = WinNativeEventFilter::getSystemMetric(
-        nullptr, WinNativeEventFilter::SystemMetric::TitleBarHeight, false);
-#else
-    // TODO: The default border width and height on Windows is 8 pixels if DPI
-    // is 96. Don't know how to acquire these values on UNIX platforms.
-    m_borderWidth = 8;
-    m_borderHeight = 8;
+namespace {
+
+QWindow *getWindowHandle(QObject *const val) {
+    if (val) {
+        const auto validWindow = [](QWindow *const window) -> QWindow * {
+            return (window && window->handle()) ? window : nullptr;
+        };
+        if (val->isWindowType()) {
+            return validWindow(qobject_cast<QWindow *>(val));
+        }
 #ifdef QT_WIDGETS_LIB
-    QWidget widget;
-    QStyleOption styleOption;
-    styleOption.initFrom(&widget);
-    m_titlebarHeight =
-        widget.style()->pixelMetric(QStyle::PixelMetric::PM_TitleBarHeight,
-                                    &styleOption) +
-        m_borderHeight;
-#else
-    m_titlebarHeight = 30 + m_borderHeight;
+        else if (val->isWidgetType()) {
+            const auto widget = qobject_cast<QWidget *>(val);
+            if (widget) {
+                return validWindow(widget->windowHandle());
+            }
+        }
 #endif
-    qDebug().noquote() << "Window device pixel ratio:"
-                       << widget.devicePixelRatioF();
-    qDebug().noquote() << "Window border width:" << m_borderWidth
-                       << "Window border height:" << m_borderHeight
-                       << "Window titlebar height:" << m_titlebarHeight;
-#endif
-    updateQtFrame_internal(m_titlebarHeight);
+        else {
+            qWarning().noquote() << "Can't acquire the window handle: only "
+                                    "QWidget and QWindow are accepted.";
+        }
+    }
+    return nullptr;
 }
 
-void FramelessHelper::updateQtFrame(QWindow *window, int titlebarHeight) {
-    if (window && (titlebarHeight > 0)) {
+} // namespace
+
+FramelessHelper::FramelessHelper(QObject *parent) : QObject(parent) {
+    // ### TODO: The default border width and height on Windows is 8 pixels if
+    // the scale factor is 1.0. Don't know how to acquire these values on UNIX
+    // platforms through native API.
+    m_borderWidth = 8;
+    m_borderHeight = 8;
+    m_titleBarHeight = 30;
+}
+
+void FramelessHelper::updateQtFrame(QWindow *const window,
+                                    const int titleBarHeight) {
+    if (window && (titleBarHeight > 0)) {
         // Reduce top frame to zero since we paint it ourselves. Use
         // device pixel to avoid rounding errors.
-        const QMargins margins = {0, -titlebarHeight, 0, 0};
+        const QMargins margins = {0, -titleBarHeight, 0, 0};
         const QVariant marginsVar = QVariant::fromValue(margins);
         // The dynamic property takes effect when creating the platform
         // window.
@@ -104,145 +98,106 @@ void FramelessHelper::updateQtFrame(QWindow *window, int titlebarHeight) {
     }
 }
 
-int FramelessHelper::borderWidth() const { return m_borderWidth; }
+int FramelessHelper::getBorderWidth() const { return m_borderWidth; }
 
-void FramelessHelper::setBorderWidth(int val) {
-    if (m_borderWidth != val) {
-        m_borderWidth = val;
-#ifdef Q_OS_WINDOWS
-        WinNativeEventFilter::setBorderWidth(val);
-#endif
-        Q_EMIT borderWidthChanged(val);
+void FramelessHelper::setBorderWidth(const int val) { m_borderWidth = val; }
+
+int FramelessHelper::getBorderHeight() const { return m_borderHeight; }
+
+void FramelessHelper::setBorderHeight(const int val) { m_borderHeight = val; }
+
+int FramelessHelper::getTitleBarHeight() const { return m_titleBarHeight; }
+
+void FramelessHelper::setTitleBarHeight(const int val) {
+    m_titleBarHeight = val;
+}
+
+QVector<QRect> FramelessHelper::getIgnoreAreas(QObject *const obj) const {
+    if (!obj) {
+        return {};
+    }
+    return m_ignoreAreas.value(obj);
+}
+
+void FramelessHelper::setIgnoreAreas(QObject *const obj,
+                                     const QVector<QRect> &val) {
+    if (obj) {
+        m_ignoreAreas[obj] = val;
     }
 }
 
-int FramelessHelper::borderHeight() const { return m_borderHeight; }
+QVector<QRect> FramelessHelper::getDraggableAreas(QObject *const obj) const {
+    if (!obj) {
+        return {};
+    }
+    return m_draggableAreas.value(obj);
+}
 
-void FramelessHelper::setBorderHeight(int val) {
-    if (m_borderHeight != val) {
-        m_borderHeight = val;
-#ifdef Q_OS_WINDOWS
-        WinNativeEventFilter::setBorderHeight(val);
-#endif
-        Q_EMIT borderHeightChanged(val);
+void FramelessHelper::setDraggableAreas(QObject *const obj,
+                                        const QVector<QRect> &val) {
+    if (obj) {
+        m_draggableAreas[obj] = val;
     }
 }
 
-int FramelessHelper::titlebarHeight() const { return m_titlebarHeight; }
+QVector<QPointer<QObject>>
+FramelessHelper::getIgnoreObjects(QObject *const obj) const {
+    if (!obj) {
+        return {};
+    }
+    return m_ignoreObjects.value(obj);
+}
 
-void FramelessHelper::setTitlebarHeight(int val) {
-    if (m_titlebarHeight != val) {
-        m_titlebarHeight = val;
-#ifdef Q_OS_WINDOWS
-        WinNativeEventFilter::setTitlebarHeight(val);
-#endif
-        Q_EMIT titlebarHeightChanged(val);
+void FramelessHelper::setIgnoreObjects(QObject *const obj,
+                                       const QVector<QPointer<QObject>> &val) {
+    if (obj) {
+        m_ignoreObjects[obj] = val;
     }
 }
 
-FramelessHelper::Areas FramelessHelper::ignoreAreas() const {
-    return m_ignoreAreas;
+QVector<QPointer<QObject>>
+FramelessHelper::getDraggableObjects(QObject *const obj) const {
+    if (!obj) {
+        return {};
+    }
+    return m_draggableObjects.value(obj);
 }
 
-void FramelessHelper::setIgnoreAreas(const Areas &val) {
-    if (m_ignoreAreas != val) {
-        m_ignoreAreas = val;
-#ifdef Q_OS_WINDOWS
-        auto iter = val.cbegin();
-        while (iter != val.cend()) {
-            if (iter.key()) {
-                const auto hwnd =
-                    static_cast<HWND>(getWindowRawHandle(iter.key()));
-                if (hwnd) {
-                    const auto data = WinNativeEventFilter::windowData(hwnd);
-                    data->ignoreAreas = iter.value();
-                }
-            }
-            ++iter;
+void FramelessHelper::setDraggableObjects(
+    QObject *const obj, const QVector<QPointer<QObject>> &val) {
+    if (obj) {
+        m_draggableObjects[obj] = val;
+    }
+}
+
+void FramelessHelper::removeWindowFrame(QObject *const obj) {
+    if (obj) {
+        // Don't miss the Qt::Window flag.
+        const Qt::WindowFlags flags = Qt::Window | Qt::FramelessWindowHint;
+        QWindow *window = getWindowHandle(obj);
+        if (window) {
+            window->setFlags(flags);
+            // MouseTracking is always enabled for QWindow.
+            window->installEventFilter(this);
+            updateQtFrame(window, m_titleBarHeight);
         }
-#endif
-        Q_EMIT ignoreAreasChanged(val);
-    }
-}
-
-FramelessHelper::Areas FramelessHelper::draggableAreas() const {
-    return m_draggableAreas;
-}
-
-void FramelessHelper::setDraggableAreas(const Areas &val) {
-    if (m_draggableAreas != val) {
-        m_draggableAreas = val;
-#ifdef Q_OS_WINDOWS
-        auto iter = val.cbegin();
-        while (iter != val.cend()) {
-            if (iter.key()) {
-                const auto hwnd =
-                    static_cast<HWND>(getWindowRawHandle(iter.key()));
-                if (hwnd) {
-                    const auto data = WinNativeEventFilter::windowData(hwnd);
-                    data->draggableAreas = iter.value();
-                }
-            }
-            ++iter;
-        }
-#endif
-        Q_EMIT draggableAreasChanged(val);
-    }
-}
-
-QVector<QObject *> FramelessHelper::framelessWindows() const {
-    return m_framelessWindows;
-}
-
-void FramelessHelper::setFramelessWindows(const QVector<QObject *> &val) {
-    if (m_framelessWindows != val) {
-        m_framelessWindows = val;
-        if (!val.isEmpty()) {
-            for (auto &&object : qAsConst(val)) {
-                if (object) {
-#ifdef Q_OS_WINDOWS
-                    const auto hwnd =
-                        static_cast<HWND>(getWindowRawHandle(object));
-                    if (hwnd) {
-                        WinNativeEventFilter::addFramelessWindow(hwnd);
-                    } else {
-                        qWarning().noquote()
-                            << "Can't make the window frameless: failed to "
-                               "acquire the window handle.";
-                    }
-#else
-                    // Don't miss the Qt::Window flag.
-                    const Qt::WindowFlags flags =
-                        Qt::Window | Qt::FramelessWindowHint;
-                    QWindow *window = getWindowHandle(object);
-                    if (window) {
-                        window->setFlags(flags);
-                        // MouseTracking is always enabled for QWindow.
-                        window->installEventFilter(this);
-                    }
 #ifdef QT_WIDGETS_LIB
-                    else {
-                        const auto widget = qobject_cast<QWidget *>(object);
-                        if (widget) {
-                            widget->setWindowFlags(flags);
-                            // We can't get MouseMove events if MouseTracking is
-                            // disabled.
-                            widget->setMouseTracking(true);
-                            widget->installEventFilter(this);
-                        }
-                    }
-#endif
-#endif
-                }
+        else {
+            const auto widget = qobject_cast<QWidget *>(obj);
+            if (widget) {
+                widget->setWindowFlags(flags);
+                // We can't get MouseMove events if MouseTracking is
+                // disabled.
+                widget->setMouseTracking(true);
+                widget->installEventFilter(this);
             }
         }
-        Q_EMIT framelessWindowsChanged(val);
+#endif
     }
 }
 
-#ifndef Q_OS_WINDOWS
 bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
-    const auto isWindowTopLevel = [](QObject *window) -> bool {
+    const auto isWindowTopLevel = [](QObject *const window) -> bool {
         if (window) {
             if (window->isWindowType()) {
                 return qobject_cast<QWindow *>(window)->isTopLevel();
@@ -259,35 +214,35 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
         event->ignore();
         return false;
     }
-    const auto getWindowEdges = [this](const QPointF &point, int ww,
-                                       int wh) -> Qt::Edges {
-        if (point.y() < m_borderHeight) {
-            if (point.x() < m_borderWidth) {
+    const auto getWindowEdges = [this](const QPointF &point, const int ww,
+                                       const int wh) -> Qt::Edges {
+        if (point.y() <= m_borderHeight) {
+            if (point.x() <= m_borderWidth) {
                 return Qt::Edge::TopEdge | Qt::Edge::LeftEdge;
             }
-            if (point.x() > (ww - m_borderWidth)) {
+            if (point.x() >= (ww - m_borderWidth)) {
                 return Qt::Edge::TopEdge | Qt::Edge::RightEdge;
             }
             return Qt::Edge::TopEdge;
         }
-        if (point.y() > (wh - m_borderHeight)) {
-            if (point.x() < m_borderWidth) {
+        if (point.y() >= (wh - m_borderHeight)) {
+            if (point.x() <= m_borderWidth) {
                 return Qt::Edge::BottomEdge | Qt::Edge::LeftEdge;
             }
-            if (point.x() > (ww - m_borderWidth)) {
+            if (point.x() >= (ww - m_borderWidth)) {
                 return Qt::Edge::BottomEdge | Qt::Edge::RightEdge;
             }
             return Qt::Edge::BottomEdge;
         }
-        if (point.x() < m_borderWidth) {
+        if (point.x() <= m_borderWidth) {
             return Qt::Edge::LeftEdge;
         }
-        if (point.x() > (ww - m_borderWidth)) {
+        if (point.x() >= (ww - m_borderWidth)) {
             return Qt::Edge::RightEdge;
         }
         return {};
     };
-    const auto getCursorShape = [](Qt::Edges edges) -> Qt::CursorShape {
+    const auto getCursorShape = [](const Qt::Edges edges) -> Qt::CursorShape {
         if ((edges.testFlag(Qt::Edge::TopEdge) &&
              edges.testFlag(Qt::Edge::LeftEdge)) ||
             (edges.testFlag(Qt::Edge::BottomEdge) &&
@@ -310,31 +265,123 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
         }
         return Qt::CursorShape::ArrowCursor;
     };
-    const auto isInSpecificAreas = [](int x, int y,
+    const auto isInSpecificAreas = [](const int x, const int y,
                                       const QVector<QRect> &areas) -> bool {
-        for (auto &&area : qAsConst(areas)) {
-            if (area.contains(x, y, true)) {
-                return true;
+        if (!areas.isEmpty()) {
+            for (auto &&area : qAsConst(areas)) {
+                if (area.contains(x, y)) {
+                    return true;
+                }
             }
         }
         return false;
     };
-    const auto isInTitlebarArea =
-        [this, &isInSpecificAreas](const QPointF &point,
-                                   QObject *window) -> bool {
-        if (window) {
-            return (point.y() < m_titlebarHeight) &&
-                !isInSpecificAreas(point.x(), point.y(),
-                                   m_ignoreAreas.value(window)) &&
-                (m_draggableAreas.isEmpty()
-                     ? true
-                     : isInSpecificAreas(point.x(), point.y(),
-                                         m_draggableAreas.value(window)));
+    const auto isInSpecificObjects =
+        [](const int x, const int y,
+           const QVector<QPointer<QObject>> &objects) -> bool {
+        if (!objects.isEmpty()) {
+            for (auto &&obj : qAsConst(objects)) {
+                if (!obj) {
+                    continue;
+                }
+#ifdef QT_WIDGETS_LIB
+                const auto widget = qobject_cast<QWidget *>(obj);
+                if (widget) {
+                    if (QRect(widget->x(), widget->y(), widget->width(),
+                              widget->height())
+                            .contains(x, y)) {
+                        return true;
+                    }
+                }
+#endif
+#ifdef QT_QUICK_LIB
+                const auto quickItem = qobject_cast<QQuickItem *>(obj);
+                if (quickItem) {
+                    if (QRect(quickItem->x(), quickItem->y(),
+                              quickItem->width(), quickItem->height())
+                            .contains(x, y)) {
+                        return true;
+                    }
+                }
+#endif
+            }
         }
         return false;
     };
-    const auto moveOrResize = [this, &getWindowEdges, &isInTitlebarArea](
-                                  const QPointF &point, QObject *object) {
+    const auto isInIgnoreAreas =
+        [this, &isInSpecificAreas](const QPointF &point,
+                                   QObject *const window) -> bool {
+        if (!window) {
+            return false;
+        }
+        return isInSpecificAreas(point.x(), point.y(), getIgnoreAreas(window));
+    };
+    const auto isInIgnoreObjects =
+        [this, &isInSpecificObjects](const QPointF &point,
+                                     QObject *const window) -> bool {
+#if defined(QT_WIDGETS_LIB) || defined(QT_QUICK_LIB)
+        if (!window) {
+            return false;
+        }
+        return isInSpecificObjects(point.x(), point.y(),
+                                   getIgnoreObjects(window));
+#else
+        Q_UNUSED(point)
+        Q_UNUSED(window)
+        return false;
+#endif
+    };
+    const auto isInDraggableAreas =
+        [this, &isInSpecificAreas](const QPointF &point,
+                                   QObject *const window) -> bool {
+        if (!window) {
+            return false;
+        }
+        const auto areas = getDraggableAreas(window);
+        return (areas.isEmpty()
+                    ? true
+                    : isInSpecificAreas(point.x(), point.y(), areas));
+    };
+    const auto isInDraggableObjects =
+        [this, &isInSpecificObjects](const QPointF &point,
+                                     QObject *const window) -> bool {
+#if defined(QT_WIDGETS_LIB) || defined(QT_QUICK_LIB)
+        if (!window) {
+            return false;
+        }
+        const auto objs = getDraggableObjects(window);
+        return (objs.isEmpty()
+                    ? true
+                    : isInSpecificObjects(point.x(), point.y(), objs));
+#else
+        Q_UNUSED(point)
+        Q_UNUSED(window)
+        return true;
+#endif
+    };
+    const auto isResizePermitted =
+        [&isInIgnoreAreas, &isInIgnoreObjects](const QPointF &point,
+                                               QObject *const window) -> bool {
+        if (!window) {
+            return false;
+        }
+        return (!isInIgnoreAreas(point, window) &&
+                !isInIgnoreObjects(point, window));
+    };
+    const auto isInTitlebarArea =
+        [this, &isInDraggableAreas, &isInDraggableObjects, &isResizePermitted](
+            const QPointF &point, QObject *const window) -> bool {
+        if (window) {
+            return ((point.y() <= m_titleBarHeight) &&
+                    isInDraggableAreas(point, window) &&
+                    isInDraggableObjects(point, window) &&
+                    isResizePermitted(point, window));
+        }
+        return false;
+    };
+    const auto moveOrResize = [&getWindowEdges, &isResizePermitted,
+                               &isInTitlebarArea](const QPointF &point,
+                                                  QObject *const object) {
         QWindow *window = getWindowHandle(object);
         if (window) {
             const Qt::Edges edges =
@@ -345,7 +392,8 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
                 }
             } else {
                 if (window->windowStates().testFlag(
-                        Qt::WindowState::WindowNoState)) {
+                        Qt::WindowState::WindowNoState) &&
+                    isResizePermitted(point, object)) {
                     window->startSystemResize(edges);
                 }
             }
@@ -362,7 +410,7 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
                 break;
             }
             if (isInTitlebarArea(mouseEvent->localPos(), object)) {
-                // FIXME: If the current object is a QWidget, we can use
+                // ### FIXME: If the current object is a QWidget, we can use
                 // getWindowHandle(object) to get the window handle, but if we
                 // call showMaximized() of that window, it will not be
                 // maximized, it will be moved to the top-left edge of the
@@ -403,8 +451,7 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
 #endif
             }
         }
-        break;
-    }
+    } break;
     case QEvent::MouseButtonPress: {
         const auto mouseEvent = static_cast<QMouseEvent *>(event);
         if (mouseEvent) {
@@ -413,8 +460,7 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
             }
             moveOrResize(mouseEvent->localPos(), object);
         }
-        break;
-    }
+    } break;
     case QEvent::MouseMove: {
         const auto mouseEvent = static_cast<QMouseEvent *>(event);
         if (mouseEvent) {
@@ -441,82 +487,16 @@ bool FramelessHelper::eventFilter(QObject *object, QEvent *event) {
             }
 #endif
         }
-        break;
-    }
+    } break;
     case QEvent::TouchBegin:
-    case QEvent::TouchUpdate: {
+    case QEvent::TouchUpdate:
         moveOrResize(
             static_cast<QTouchEvent *>(event)->touchPoints().first().pos(),
             object);
         break;
-    }
-    default: {
+    default:
         break;
-    }
     }
     event->ignore();
     return false;
 }
-#endif
-
-QWindow *FramelessHelper::getWindowHandle(QObject *val) {
-    if (val) {
-        const auto validWindow = [](QWindow *window) -> QWindow * {
-            return (window && window->handle()) ? window : nullptr;
-        };
-        if (val->isWindowType()) {
-            return validWindow(qobject_cast<QWindow *>(val));
-        }
-#ifdef QT_WIDGETS_LIB
-        else if (val->isWidgetType()) {
-            const auto widget = qobject_cast<QWidget *>(val);
-            if (widget) {
-                return validWindow(widget->windowHandle());
-            }
-        }
-#endif
-        else {
-            qWarning().noquote() << "Can't acquire the window handle: only "
-                                    "QWidget and QWindow are accepted.";
-        }
-    }
-    return nullptr;
-}
-
-void FramelessHelper::updateQtFrame_internal(int val) {
-    if (!m_framelessWindows.isEmpty()) {
-        for (auto &&object : qAsConst(m_framelessWindows)) {
-            QWindow *window = getWindowHandle(object);
-            if (window) {
-                updateQtFrame(window, val);
-            } else {
-                qWarning().noquote() << "Can't modify the window frame: failed "
-                                        "to acquire the window handle.";
-            }
-        }
-    }
-}
-
-#ifdef Q_OS_WINDOWS
-void *FramelessHelper::getWindowRawHandle(QObject *object) {
-    if (object) {
-        QWindow *window = getWindowHandle(object);
-        if (window) {
-            const auto handle = QGuiApplication::platformNativeInterface()
-                                    ->nativeResourceForWindow("handle", window);
-            if (handle) {
-                return handle;
-            }
-        }
-#ifdef QT_WIDGETS_LIB
-        else {
-            const auto widget = qobject_cast<QWidget *>(object);
-            if (widget) {
-                return reinterpret_cast<void *>(widget->winId());
-            }
-        }
-#endif
-    }
-    return nullptr;
-}
-#endif

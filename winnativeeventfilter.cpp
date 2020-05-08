@@ -27,7 +27,11 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QLibrary>
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
 #include <QOperatingSystemVersion>
+#else
+#include <QSysInfo>
+#endif
 #ifdef QT_QUICK_LIB
 #include <QQuickItem>
 #endif
@@ -36,19 +40,21 @@
 #endif
 #include <QtMath>
 
-// All the following constants and macros are copied from Windows 10 SDK
-// directly, without any modifications.
+namespace {
+
+// All the following enums, structs and function prototypes are copied from
+// Windows 10 SDK directly, without any modifications.
 
 #ifdef IsMinimized
 #undef IsMinimized
 #endif
 
-// Only available since Windows 2000
-#define IsMinimized m_lpIsIconic
-
 #ifdef IsMaximized
 #undef IsMaximized
 #endif
+
+// Only available since Windows 2000
+#define IsMinimized m_lpIsIconic
 
 // Only available since Windows 2000
 #define IsMaximized m_lpIsZoomed
@@ -174,16 +180,11 @@
     }
 #endif
 
-namespace {
-
-// All the following enums, structs and function prototypes are copied from
-// Windows 10 SDK directly, without any modifications.
-
 const UINT m_defaultDotsPerInch = USER_DEFAULT_SCREEN_DPI;
 
 const qreal m_defaultDevicePixelRatio = 1.0;
 
-int m_borderWidth = -1, m_borderHeight = -1, m_titlebarHeight = -1;
+int m_borderWidth = -1, m_borderHeight = -1, m_titleBarHeight = -1;
 
 using HPAINTBUFFER = HANDLE;
 
@@ -233,6 +234,38 @@ using BP_PAINTPARAMS = struct _BP_PAINTPARAMS {
     CONST RECT *prcExclude;
     CONST BLENDFUNCTION *pBlendFunction;
 };
+
+#if (QT_VERSION < QT_VERSION_CHECK(5, 7, 0))
+#define qAsConst std::as_const
+#endif
+
+bool isWin8OrGreator() {
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
+    return QOperatingSystemVersion::current() >=
+        QOperatingSystemVersion::Windows8;
+#else
+    return QSysInfo::WindowsVersion >= QSysInfo::WV_WINDOWS8;
+#endif
+}
+
+bool isWin8Point1OrGreator() {
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
+    return QOperatingSystemVersion::current() >=
+        QOperatingSystemVersion::Windows8_1;
+#else
+    return QSysInfo::WindowsVersion >= QSysInfo::WV_WINDOWS8_1;
+#endif
+}
+
+bool isWin10OrGreator(const int ver) {
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
+    return QOperatingSystemVersion::current() >=
+        QOperatingSystemVersion(QOperatingSystemVersion::Windows, 10, 0, ver);
+#else
+    Q_UNUSED(ver)
+    return QSysInfo::WindowsVersion >= QSysInfo::WV_WINDOWS10;
+#endif
+}
 
 // Some of the following functions are not used by this code anymore,
 // but we don't remove them completely because we may still need them later.
@@ -427,17 +460,14 @@ void ResolveWin32APIs() {
     WNEF_SYSTEM_LIB_END
 #endif
     // Available since Windows 8.1
-    if (QOperatingSystemVersion::current() >=
-        QOperatingSystemVersion::Windows8_1) {
+    if (isWin8Point1OrGreator()) {
         WNEF_SYSTEM_LIB_BEGIN(SHCore)
         WNEF_RESOLVE_WINAPI(GetDpiForMonitor)
         WNEF_RESOLVE_WINAPI(GetProcessDpiAwareness)
         WNEF_SYSTEM_LIB_END
     }
     // Available since Windows 10, version 1607 (10.0.14393)
-    if (QOperatingSystemVersion::current() >=
-        QOperatingSystemVersion(QOperatingSystemVersion::Windows, 10, 0,
-                                14393)) {
+    if (isWin10OrGreator(14393)) {
         WNEF_SYSTEM_LIB_BEGIN(User32)
         WNEF_RESOLVE_WINAPI(GetDpiForWindow)
         WNEF_RESOLVE_WINAPI(GetDpiForSystem)
@@ -446,9 +476,7 @@ void ResolveWin32APIs() {
         WNEF_SYSTEM_LIB_END
     }
     // Available since Windows 10, version 1803 (10.0.17134)
-    if (QOperatingSystemVersion::current() >=
-        QOperatingSystemVersion(QOperatingSystemVersion::Windows, 10, 0,
-                                17134)) {
+    if (isWin10OrGreator(17134)) {
         WNEF_SYSTEM_LIB_BEGIN(User32)
         WNEF_RESOLVE_WINAPI(GetSystemDpiForProcess)
         WNEF_SYSTEM_LIB_END
@@ -903,6 +931,8 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 m_lpSetLayeredWindowAttributes(msg->hwnd, RGB(255, 0, 255), 0,
                                                LWA_COLORKEY);
             }
+            // Bring our frame shadow back through DWM, don't draw it manually.
+            UpdateFrameMarginsForWindow(msg->hwnd);
             // Trigger a frame change event to let us enter the WM_NCCALCSIZE
             // message to remove our title bar as early as possible.
             updateWindow(msg->hwnd, true, false);
@@ -1027,8 +1057,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                     // Due to ABM_GETAUTOHIDEBAREX only exists from Win8.1,
                     // we have to use another way to judge this if we are
                     // running on Windows 7 or Windows 8.
-                    if (QOperatingSystemVersion::current() >=
-                        QOperatingSystemVersion::Windows8_1) {
+                    if (isWin8Point1OrGreator()) {
                         const MONITORINFO monitorInfo =
                             GetMonitorInfoForWindow(msg->hwnd);
                         // This helper can be used to determine if there's a
@@ -1115,24 +1144,32 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
         case WM_NCPAINT: {
             // 边框阴影处于非客户区的范围，因此如果直接阻止非客户区的绘制，会导致边框阴影丢失
 
-            if (IsDwmCompositionEnabled()) {
-                break;
-            } else {
+            if (!IsDwmCompositionEnabled()) {
                 // Only block WM_NCPAINT when DWM composition is disabled. If
                 // it's blocked when DWM composition is enabled, the frame
                 // shadow won't be drawn.
                 *result = 0;
                 return true;
             }
+            break;
         }
         case WM_NCACTIVATE: {
-            // DefWindowProc won't repaint the window border if lParam (normally
-            // a HRGN) is -1. See the following link's "lParam" section:
-            // https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-ncactivate
-            // Don't use "*result = 0" otherwise the window won't respond to
-            // the window active state change.
-            *result =
-                m_lpDefWindowProcW(msg->hwnd, msg->message, msg->wParam, -1);
+            if (IsDwmCompositionEnabled()) {
+                // DefWindowProc won't repaint the window border if lParam
+                // (normally a HRGN) is -1. See the following link's "lParam"
+                // section:
+                // https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-ncactivate
+                // Don't use "*result = 0" otherwise the window won't respond to
+                // the window active state change.
+                *result = m_lpDefWindowProcW(msg->hwnd, msg->message,
+                                             msg->wParam, -1);
+            } else {
+                if (static_cast<BOOL>(msg->wParam)) {
+                    *result = FALSE;
+                } else {
+                    *result = TRUE;
+                }
+            }
             return true;
         }
         case WM_NCHITTEST: {
@@ -1278,13 +1315,13 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 mouse.x = GET_X_LPARAM(_lParam);
                 mouse.y = GET_Y_LPARAM(_lParam);
                 m_lpScreenToClient(_hWnd, &mouse);
-                const RECT frame = GetFrameSizeForWindow(_hWnd, true);
                 // These values are DPI-aware.
-                const LONG bw = frame.left; // identical to right
-                // identical to top, if the latter doesn't include the title bar
-                // height
-                const LONG bh = frame.bottom;
-                const LONG tbh = frame.top;
+                const LONG bw =
+                    getSystemMetric(_hWnd, SystemMetric::BorderWidth);
+                const LONG bh =
+                    getSystemMetric(_hWnd, SystemMetric::BorderHeight);
+                const LONG tbh =
+                    getSystemMetric(_hWnd, SystemMetric::TitleBarHeight);
                 const qreal dpr = GetDevicePixelRatioForWindow(_hWnd);
                 const bool isInIgnoreAreas = isInSpecificAreas(
                     mouse.x, mouse.y, _data->windowData.ignoreAreas, dpr);
@@ -1309,10 +1346,11 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 const bool isInIgnoreObjects = false;
                 const bool isInDraggableObjects = true;
 #endif
-                const bool isResizePermitted = !isInIgnoreAreas &&
-                    isInDraggableAreas && !isInIgnoreObjects &&
-                    isInDraggableObjects;
-                const bool isTitlebar = (mouse.y <= tbh) && isResizePermitted;
+                const bool isResizePermitted =
+                    !isInIgnoreAreas && !isInIgnoreObjects;
+                const bool isTitlebar = (mouse.y <= tbh) &&
+                    isInDraggableAreas && isInDraggableObjects &&
+                    isResizePermitted;
                 if (IsMaximized(_hWnd)) {
                     if (isTitlebar) {
                         return HTCAPTION;
@@ -1373,19 +1411,18 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             const RECT rcWorkArea = monitorInfo.rcWork;
             const RECT rcMonitorArea = monitorInfo.rcMonitor;
             auto &mmi = *reinterpret_cast<LPMINMAXINFO>(msg->lParam);
-            if (QOperatingSystemVersion::current() <
-                QOperatingSystemVersion::Windows8) {
-                // FIXME: Buggy on Windows 7:
+            if (isWin8OrGreator()) {
+                // Works fine on Windows 8/8.1/10
+                mmi.ptMaxPosition.x =
+                    qAbs(rcWorkArea.left - rcMonitorArea.left);
+                mmi.ptMaxPosition.y = qAbs(rcWorkArea.top - rcMonitorArea.top);
+            } else {
+                // ### FIXME: Buggy on Windows 7:
                 // The origin of coordinates is the top left edge of the
                 // monitor's work area. Why? It should be the top left edge of
                 // the monitor's area.
                 mmi.ptMaxPosition.x = rcMonitorArea.left;
                 mmi.ptMaxPosition.y = rcMonitorArea.top;
-            } else {
-                // Works fine on Windows 8/8.1/10
-                mmi.ptMaxPosition.x =
-                    qAbs(rcWorkArea.left - rcMonitorArea.left);
-                mmi.ptMaxPosition.y = qAbs(rcWorkArea.top - rcMonitorArea.top);
             }
             if (data->windowData.maximumSize.isEmpty()) {
                 mmi.ptMaxSize.x = qAbs(rcWorkArea.right - rcWorkArea.left);
@@ -1427,7 +1464,6 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             *result = ret;
             return true;
         }
-        case WM_ACTIVATE:
         case WM_DWMCOMPOSITIONCHANGED:
             // DWM won't draw the frame shadow if the window doesn't have a
             // frame. So extend the window frame a bit to make sure we still
@@ -1487,8 +1523,8 @@ void WinNativeEventFilter::setBorderWidth(int bw) { m_borderWidth = bw; }
 
 void WinNativeEventFilter::setBorderHeight(int bh) { m_borderHeight = bh; }
 
-void WinNativeEventFilter::setTitlebarHeight(int tbh) {
-    m_titlebarHeight = tbh;
+void WinNativeEventFilter::setTitleBarHeight(int tbh) {
+    m_titleBarHeight = tbh;
 }
 
 void WinNativeEventFilter::updateWindow(HWND handle, bool triggerFrameChange,
@@ -1544,16 +1580,12 @@ int WinNativeEventFilter::getSystemMetric(HWND handle, SystemMetric metric,
             }
         }
         case SystemMetric::TitleBarHeight: {
-            const int tbh = userData->windowData.titlebarHeight;
+            const int tbh = userData->windowData.titleBarHeight;
             if (tbh > 0) {
                 return qRound(tbh * dpr);
             } else {
-                const int result = m_lpGetSystemMetrics(SM_CYSIZEFRAME) +
-                    m_lpGetSystemMetrics(SM_CXPADDEDBORDER) +
-                    m_lpGetSystemMetrics(SM_CYCAPTION);
+                const int result = m_lpGetSystemMetrics(SM_CYCAPTION);
                 const int result_dpi =
-                    GetSystemMetricsForWindow(handle, SM_CYSIZEFRAME) +
-                    GetSystemMetricsForWindow(handle, SM_CXPADDEDBORDER) +
                     GetSystemMetricsForWindow(handle, SM_CYCAPTION);
                 return dpiAware ? result_dpi : result;
             }
@@ -1574,8 +1606,8 @@ int WinNativeEventFilter::getSystemMetric(HWND handle, SystemMetric metric,
         break;
     }
     case SystemMetric::TitleBarHeight: {
-        if (m_titlebarHeight > 0) {
-            return qRound(m_titlebarHeight * dpr);
+        if (m_titleBarHeight > 0) {
+            return qRound(m_titleBarHeight * dpr);
         }
         break;
     }

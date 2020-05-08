@@ -24,8 +24,9 @@
 
 #pragma once
 
-#include <QHash>
+#include <QMap>
 #include <QObject>
+#include <QPointer>
 #include <QRect>
 #include <QVector>
 
@@ -37,67 +38,45 @@ class FramelessHelper : public QObject {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(FramelessHelper)
 
-    Q_PROPERTY(int borderWidth READ borderWidth WRITE setBorderWidth NOTIFY
-                   borderWidthChanged)
-    Q_PROPERTY(int borderHeight READ borderHeight WRITE setBorderHeight NOTIFY
-                   borderHeightChanged)
-    Q_PROPERTY(int titlebarHeight READ titlebarHeight WRITE setTitlebarHeight
-                   NOTIFY titlebarHeightChanged)
-    Q_PROPERTY(Areas ignoreAreas READ ignoreAreas WRITE setIgnoreAreas NOTIFY
-                   ignoreAreasChanged)
-    Q_PROPERTY(Areas draggableAreas READ draggableAreas WRITE setDraggableAreas
-                   NOTIFY draggableAreasChanged)
-    Q_PROPERTY(QVector<QObject *> framelessWindows READ framelessWindows WRITE
-                   setFramelessWindows NOTIFY framelessWindowsChanged)
-
 public:
-    using Areas = QHash<QObject *, QVector<QRect>>;
-
     explicit FramelessHelper(QObject *parent = nullptr);
     ~FramelessHelper() override = default;
 
-    static void updateQtFrame(QWindow *window, int titlebarHeight);
+    static void updateQtFrame(QWindow *const window, const int titleBarHeight);
 
-    int borderWidth() const;
-    void setBorderWidth(int val);
+    int getBorderWidth() const;
+    void setBorderWidth(const int val);
 
-    int borderHeight() const;
-    void setBorderHeight(int val);
+    int getBorderHeight() const;
+    void setBorderHeight(const int val);
 
-    int titlebarHeight() const;
-    void setTitlebarHeight(int val);
+    int getTitleBarHeight() const;
+    void setTitleBarHeight(const int val);
 
-    Areas ignoreAreas() const;
-    void setIgnoreAreas(const Areas &val);
+    QVector<QRect> getIgnoreAreas(QObject *const obj) const;
+    void setIgnoreAreas(QObject *const obj, const QVector<QRect> &val);
 
-    Areas draggableAreas() const;
-    void setDraggableAreas(const Areas &val);
+    QVector<QRect> getDraggableAreas(QObject *const obj) const;
+    void setDraggableAreas(QObject *const obj, const QVector<QRect> &val);
 
-    QVector<QObject *> framelessWindows() const;
-    void setFramelessWindows(const QVector<QObject *> &val);
+    QVector<QPointer<QObject>> getIgnoreObjects(QObject *const obj) const;
+    void setIgnoreObjects(QObject *const obj,
+                          const QVector<QPointer<QObject>> &val);
+
+    QVector<QPointer<QObject>> getDraggableObjects(QObject *const obj) const;
+    void setDraggableObjects(QObject *const obj,
+                             const QVector<QPointer<QObject>> &val);
+
+    void removeWindowFrame(QObject *const obj);
 
 protected:
-#ifndef Q_OS_WINDOWS
     bool eventFilter(QObject *object, QEvent *event) override;
-#endif
 
 private:
-    QWindow *getWindowHandle(QObject *val);
-#ifdef Q_OS_WINDOWS
-    void *getWindowRawHandle(QObject *object);
-#endif
-    void updateQtFrame_internal(int val);
+    using Areas = QMap<QPointer<QObject>, QVector<QRect>>;
+    using Objects = QMap<QPointer<QObject>, QVector<QPointer<QObject>>>;
 
-Q_SIGNALS:
-    void borderWidthChanged(int);
-    void borderHeightChanged(int);
-    void titlebarHeightChanged(int);
-    void ignoreAreasChanged(const Areas &);
-    void draggableAreasChanged(const Areas &);
-    void framelessWindowsChanged(const QVector<QObject *> &);
-
-private:
-    int m_borderWidth = -1, m_borderHeight = -1, m_titlebarHeight = -1;
-    Areas m_ignoreAreas, m_draggableAreas;
-    QVector<QObject *> m_framelessWindows;
+    int m_borderWidth = -1, m_borderHeight = -1, m_titleBarHeight = -1;
+    Areas m_ignoreAreas = {}, m_draggableAreas = {};
+    Objects m_ignoreObjects = {}, m_draggableObjects = {};
 };
