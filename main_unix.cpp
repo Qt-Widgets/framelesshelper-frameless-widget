@@ -27,6 +27,8 @@ int main(int argc, char *argv[]) {
 
     QWidget widget;
     helper.removeWindowFrame(&widget);
+    widget.resize(800, 600);
+    FramelessHelper::moveWindowToDesktopCenter(&widget);
     widget.show();
 
     return QApplication::exec();
