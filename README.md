@@ -1,6 +1,10 @@
-# FramelessHelper
+# FramelessHelper (Win32 version)
+
+If you are using part of or all of the code from this repository in your own projects, it's my pleasure and I hope you can tell me the URL of the homepage or repository of your projects, whether your projects are open-sourced or not do not matter. I'll link to your homepage or repository in this README file. It would be much better if you can provide me some screenshots of your software for demonstration at the same time.
 
 ## Screenshots
+
+![zhihuiyanglao](/screenshots/zhihuiyanglao.png)
 
 ![Qt Widgets example](/screenshots/widgets.png)
 
@@ -37,7 +41,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-Please refer to [**main.cpp**](/main.cpp) for more detailed information.
+Please refer to [**main_windows.cpp**](/main_windows.cpp) for more detailed information.
 
 ### Ignore areas and etc
 
@@ -55,7 +59,7 @@ data.maximumSize = QSize(1280, 720);
 data.minimumSize = QSize(800, 540);
 // How to set ignore areas:
 // The geometry of something you already know, in window coordinates
-data.ignoreAreas.append(QRect(100, 0, 30, 30));
+data.ignoreAreas.append({100, 0, 30, 30});
 // The geometry of a widget, in window coordinates.
 // It won't update automatically when the geometry of that widget has
 // changed, so if you want to add a widget, which is in a layout and
@@ -72,7 +76,7 @@ WinNativeEventFilter::setWindowData(reinterpret_cast<HWND>(widget.winId()), &dat
 const auto data = WinNativeEventFilter::windowData(reinterpret_cast<HWND>(widget.winId()));
 data.borderWidth = 5;
 data.borderHeight = 5;
-data.titlebarHeight = 30;
+data.titleBarHeight = 30;
 ```
 
 ## Supported Platforms
@@ -83,8 +87,10 @@ The code itself should be able to work on Windows Vista in theory, but Qt has dr
 
 ## Requirements
 
-- Qt: at least 5.6 (no modules are required, but to make full use of this repository, you'd better install the `gui`, `widgets` and `quick` modules)
-- Compiler: support C++11 at least. MSVC, MinGW, Clang-CL, Intel-CL or cross compile from Linux are all supported.
+| Component | Requirement | Additional Information |
+| --- | --- | --- |
+| Qt | >= 5.6 | No modules are required explicitly, but to make full use of this repository, you'd better install the `gui`, `widgets` and `quick` modules |
+| Compiler | >= C++11 | MSVC, MinGW, Clang-CL, Intel-CL or cross compile from Linux are all supported |
 
 ## Notes for developers
 

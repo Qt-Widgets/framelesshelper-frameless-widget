@@ -932,20 +932,27 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
         if (!data->initialized) {
             // Avoid initializing a same window twice.
             data->initialized = TRUE;
-            // Restore default window style.
-            // WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
-            // WS_THICKFRAME |  WS_MINIMIZEBOX | WS_MAXIMIZEBOX
-            // Apply the WS_OVERLAPPEDWINDOW window style to restore the window
-            // to a normal native Win32 window.
-            // Don't apply the Qt::FramelessWindowHint flag, it will add the
-            // WS_POPUP window style to the window, which will turn the window
-            // into a popup window, losing all the functions a normal window
-            // should have.
-            // WS_CLIPCHILDREN | WS_CLIPSIBLINGS: work-around strange bugs.
-            m_lpSetWindowLongPtrW(msg->hwnd, GWL_STYLE,
-                                  WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN |
-                                      WS_CLIPSIBLINGS);
-            if (!data->windowData.notLayeredWindow) {
+            // Don't restore the window styles to default when you are
+            // developing Qt Quick applications because the QWindow
+            // will disappear once you do it. However, Qt Widgets applications
+            // are not affected. Don't know why currently.
+            if (data->windowData.restoreDefaultWindowStyles) {
+                // Restore default window style.
+                // WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU
+                // | WS_THICKFRAME |  WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+                // Apply the WS_OVERLAPPEDWINDOW window style to restore the
+                // window to a normal native Win32 window.
+                // Don't apply the Qt::FramelessWindowHint flag, it will add
+                // the WS_POPUP window style to the window, which will turn
+                // the window into a popup window, losing all the functions
+                // a normal window should have.
+                // WS_CLIPCHILDREN | WS_CLIPSIBLINGS: work-around strange bugs.
+                m_lpSetWindowLongPtrW(msg->hwnd, GWL_STYLE,
+                                      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN |
+                                          WS_CLIPSIBLINGS);
+                updateWindow(msg->hwnd, true, false);
+            }
+            if (!data->windowData.doNotEnableLayeredWindow) {
                 // Turn our window into a layered window to get better
                 // performance and hopefully, to get rid of some strange bugs at
                 // the same time. But this will break the Arcylic effect
@@ -955,6 +962,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 // currently.
                 m_lpSetWindowLongPtrW(msg->hwnd, GWL_EXSTYLE,
                                       WS_EX_APPWINDOW | WS_EX_LAYERED);
+                updateWindow(msg->hwnd, true, false);
                 // A layered window can't be visible unless we call
                 // SetLayeredWindowAttributes or UpdateLayeredWindow once.
                 m_lpSetLayeredWindowAttributes(msg->hwnd, RGB(255, 0, 255), 0,
@@ -962,9 +970,6 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             }
             // Bring our frame shadow back through DWM, don't draw it manually.
             UpdateFrameMarginsForWindow(msg->hwnd);
-            // Trigger a frame change event to let us enter the WM_NCCALCSIZE
-            // message to remove our title bar as early as possible.
-            updateWindow(msg->hwnd, true, false);
         }
         switch (msg->message) {
         case WM_NCCALCSIZE: {
@@ -1281,10 +1286,8 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                             if (!area.isValid()) {
                                 continue;
                             }
-                            if (QRect(qRound(area.x() * dpr),
-                                      qRound(area.y() * dpr),
-                                      qRound(area.width() * dpr),
-                                      qRound(area.height() * dpr))
+                            if (QRectF(area.x() * dpr, area.y() * dpr,
+                                       area.width() * dpr, area.height() * dpr)
                                     .contains(x, y)) {
                                 return true;
                             }
@@ -1305,10 +1308,10 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
 #ifdef QT_WIDGETS_LIB
                             const auto widget = qobject_cast<QWidget *>(object);
                             if (widget) {
-                                if (QRect(qRound(widget->x() * dpr),
-                                          qRound(widget->y() * dpr),
-                                          qRound(widget->width() * dpr),
-                                          qRound(widget->height() * dpr))
+                                const QPoint pos = widget->mapToGlobal({0, 0});
+                                if (QRectF(pos.x() * dpr, pos.y() * dpr,
+                                           widget->width() * dpr,
+                                           widget->height() * dpr)
                                         .contains(x, y)) {
                                     return true;
                                 }
@@ -1318,10 +1321,11 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                             const auto quickItem =
                                 qobject_cast<QQuickItem *>(object);
                             if (quickItem) {
-                                if (QRect(qRound(quickItem->x() * dpr),
-                                          qRound(quickItem->y() * dpr),
-                                          qRound(quickItem->width() * dpr),
-                                          qRound(quickItem->height() * dpr))
+                                const QPointF pos =
+                                    quickItem->mapToGlobal({0, 0});
+                                if (QRectF(pos.x() * dpr, pos.y() * dpr,
+                                           quickItem->width() * dpr,
+                                           quickItem->height() * dpr)
                                         .contains(x, y)) {
                                     return true;
                                 }
@@ -1336,13 +1340,13 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 m_lpGetClientRect(_hWnd, &clientRect);
                 const LONG ww = clientRect.right;
                 const LONG wh = clientRect.bottom;
-                POINT mouse;
                 // Don't use HIWORD(lParam) and LOWORD(lParam) to get cursor
                 // coordinates because their results are unsigned numbers,
                 // however the cursor position may be negative due to in a
                 // different monitor.
-                mouse.x = GET_X_LPARAM(_lParam);
-                mouse.y = GET_Y_LPARAM(_lParam);
+                const POINT globalMouse{GET_X_LPARAM(_lParam),
+                                        GET_Y_LPARAM(_lParam)};
+                POINT mouse = globalMouse;
                 m_lpScreenToClient(_hWnd, &mouse);
                 // These values are DPI-aware.
                 const LONG bw =
@@ -1360,12 +1364,13 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                     : isInSpecificAreas(mouse.x, mouse.y,
                                         _data->windowData.draggableAreas, dpr);
 #if defined(QT_WIDGETS_LIB) || defined(QT_QUICK_LIB)
-                const bool isInIgnoreObjects = isInSpecificObjects(
-                    mouse.x, mouse.y, _data->windowData.ignoreObjects, dpr);
+                const bool isInIgnoreObjects =
+                    isInSpecificObjects(globalMouse.x, globalMouse.y,
+                                        _data->windowData.ignoreObjects, dpr);
                 const bool isInDraggableObjects =
                     _data->windowData.draggableObjects.isEmpty()
                     ? true
-                    : isInSpecificObjects(mouse.x, mouse.y,
+                    : isInSpecificObjects(globalMouse.x, globalMouse.y,
                                           _data->windowData.draggableObjects,
                                           dpr);
 #else

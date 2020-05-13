@@ -1,16 +1,22 @@
 import QtQuick 2.15
+import QtQuick.Window 2.15
+import wangwenx190.Utils 1.0
 
-Item {
+Window {
     id: root
+    visible: true
+    width: 800
+    height: 600
+    title: qsTr("Hello, World!")
 
-    signal minimizeButtonClicked
-    signal maximizeButtonClicked
-    signal restoreButtonClicked
-    signal closeButtonClicked
+    FramelessHelper {
+        id: framelessHelper
+        Component.onCompleted: framelessHelper.removeWindowFrame()
+    }
 
     Rectangle {
         id: titleBar
-        height: $TitleBarHeight
+        height: 30
         color: "white"
         anchors.top: parent.top
         anchors.left: parent.left
@@ -18,9 +24,9 @@ Item {
 
         Text {
             id: titleBarText
-            text: qsTr("Hello, World!")
+            text: root.title
             font.family: "Noto Sans CJK SC"
-            font.pointSize: 15
+            font.pointSize: 13
             color: "black"
             anchors.left: parent.left
             anchors.leftMargin: 15
@@ -32,23 +38,32 @@ Item {
             anchors.right: parent.right
 
             MinimizeButton {
-                onClicked: root.minimizeButtonClicked()
+                id: minimizeButton
+                onClicked: root.showMinimized()
+                Component.onCompleted: framelessHelper.addIgnoreObject(
+                                           minimizeButton)
             }
 
             MaximizeButton {
+                id: maximizeButton
+                // QWindow::Visibility::Maximized
+                maximized: root.visibility === 4
                 onClicked: {
                     if (maximized) {
-                        root.restoreButtonClicked()
-                        maximized = false
+                        root.showNormal()
                     } else {
-                        root.maximizeButtonClicked()
-                        maximized = true
+                        root.showMaximized()
                     }
                 }
+                Component.onCompleted: framelessHelper.addIgnoreObject(
+                                           maximizeButton)
             }
 
             CloseButton {
-                onClicked: root.closeButtonClicked()
+                id: closeButton
+                onClicked: root.close()
+                Component.onCompleted: framelessHelper.addIgnoreObject(
+                                           closeButton)
             }
         }
     }
