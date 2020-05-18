@@ -10,8 +10,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-static const int m_defaultButtonWidth = 45;
-
 int main(int argc, char *argv[]) {
     // High DPI scaling is enabled by default from Qt 6
 #if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))
@@ -99,16 +97,21 @@ int main(int argc, char *argv[]) {
     QQmlApplicationEngine engine;
     qmlRegisterType<FramelessQuickHelper>("wangwenx190.Utils", 1, 0,
                                           "FramelessHelper");
-    const QUrl url(QString::fromUtf8("qrc:///qml/main.qml"));
-    QObject::connect(
+    const QUrl mainQmlUrl(QString::fromUtf8("qrc:///qml/main.qml"));
+    const QMetaObject::Connection connection = QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreated, &application,
-        [&url](QObject *obj, const QUrl &objUrl) {
-            if (!obj && (url == objUrl)) {
-                QCoreApplication::exit(-1);
+        [&mainQmlUrl, &connection](QObject *object, const QUrl &url) {
+            if (url != mainQmlUrl) {
+                return;
+            }
+            if (!object) {
+                QGuiApplication::exit(-1);
+            } else {
+                QObject::disconnect(connection);
             }
         },
         Qt::QueuedConnection);
-    engine.load(url);
+    engine.load(mainQmlUrl);
 #endif
 
     return QApplication::exec();
