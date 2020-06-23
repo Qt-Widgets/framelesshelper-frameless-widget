@@ -28,6 +28,7 @@
 #include "winnativeeventfilter.h"
 #endif
 #include <QQuickWindow>
+#include <QScreen>
 
 #ifdef Q_OS_WINDOWS
 namespace {
@@ -48,7 +49,7 @@ int FramelessQuickHelper::borderWidth() const {
         const auto hWnd = reinterpret_cast<HWND>(win->winId());
         if (hWnd) {
             return WinNativeEventFilter::getSystemMetric(
-                hWnd, WinNativeEventFilter::SystemMetric::BorderWidth, false);
+                hWnd, WinNativeEventFilter::SystemMetric::BorderWidth);
         }
     }
     return m_defaultBorderWidth;
@@ -83,7 +84,7 @@ int FramelessQuickHelper::borderHeight() const {
         const auto hWnd = reinterpret_cast<HWND>(win->winId());
         if (hWnd) {
             return WinNativeEventFilter::getSystemMetric(
-                hWnd, WinNativeEventFilter::SystemMetric::BorderHeight, false);
+                hWnd, WinNativeEventFilter::SystemMetric::BorderHeight);
         }
     }
     return m_defaultBorderHeight;
@@ -118,8 +119,7 @@ int FramelessQuickHelper::titleBarHeight() const {
         const auto hWnd = reinterpret_cast<HWND>(win->winId());
         if (hWnd) {
             return WinNativeEventFilter::getSystemMetric(
-                hWnd, WinNativeEventFilter::SystemMetric::TitleBarHeight,
-                false);
+                hWnd, WinNativeEventFilter::SystemMetric::TitleBarHeight);
         }
     }
     return m_defaultTitleBarHeight;
@@ -310,17 +310,64 @@ void FramelessQuickHelper::removeWindowFrame(const bool center) {
     }
 }
 
-void FramelessQuickHelper::moveWindowToDesktopCenter() {
+QSize FramelessQuickHelper::desktopSize() const {
     const auto win = window();
     if (win) {
-#ifdef Q_OS_WINDOWS
-        const auto hWnd = reinterpret_cast<HWND>(win->winId());
-        if (hWnd) {
-            WinNativeEventFilter::moveWindowToDesktopCenter(hWnd);
+        const auto screen = win->screen();
+        if (screen) {
+            return screen->size();
         }
+    }
+    return {};
+}
+
+QRect FramelessQuickHelper::desktopAvailableGeometry() const {
+    const auto win = window();
+    if (win) {
+        const auto screen = win->screen();
+        if (screen) {
+            return screen->availableGeometry();
+        }
+    }
+    return {};
+}
+
+QSize FramelessQuickHelper::desktopAvailableSize() const {
+    const auto win = window();
+    if (win) {
+        const auto screen = win->screen();
+        if (screen) {
+            return screen->availableSize();
+        }
+    }
+    return {};
+}
+
+void FramelessQuickHelper::moveWindowToDesktopCenter(const bool realCenter) {
+    const auto win = window();
+    if (win) {
+        if (realCenter) {
+#ifdef Q_OS_WINDOWS
+            const auto hWnd = reinterpret_cast<HWND>(win->winId());
+            if (hWnd) {
+                WinNativeEventFilter::moveWindowToDesktopCenter(hWnd);
+            }
 #else
-        FramelessHelper::moveWindowToDesktopCenter(win);
+            FramelessHelper::moveWindowToDesktopCenter(win);
 #endif
+        } else {
+            const QSize windowSize = win->size();
+            const QSize screenSize = desktopAvailableSize();
+            const int newX = qRound(
+                static_cast<qreal>(screenSize.width() - windowSize.width()) /
+                2.0);
+            const int newY = qRound(
+                static_cast<qreal>(screenSize.height() - windowSize.height()) /
+                2.0);
+            const QRect screenGeometry = desktopAvailableGeometry();
+            win->setX(newX + screenGeometry.x());
+            win->setY(newY + screenGeometry.y());
+        }
     }
 }
 

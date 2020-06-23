@@ -49,6 +49,9 @@
 class FramelessQuickHelper : public QQuickItem {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(FramelessQuickHelper)
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+    QML_ELEMENT
+#endif
     Q_PROPERTY(int borderWidth READ borderWidth WRITE setBorderWidth NOTIFY
                    borderWidthChanged)
     Q_PROPERTY(int borderHeight READ borderHeight WRITE setBorderHeight NOTIFY
@@ -91,7 +94,10 @@ public:
 
 public Q_SLOTS:
     void removeWindowFrame(const bool center = true);
-    void moveWindowToDesktopCenter();
+    void moveWindowToDesktopCenter(const bool realCenter = true);
+    QSize desktopSize() const;
+    QRect desktopAvailableGeometry() const;
+    QSize desktopAvailableSize() const;
 
     void setIgnoreAreas(const QVector<QRect> &val);
     void clearIgnoreAreas();
