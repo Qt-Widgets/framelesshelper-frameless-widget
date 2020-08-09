@@ -1,42 +1,81 @@
+/*
+ * MIT License
+ *
+ * Copyright (C) 2020 by wangwenx190 (Yuhang Zhao)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "winnativeeventfilter.h"
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QOperatingSystemVersion>
+#include <QPainter>
 #include <QPushButton>
+#include <QVBoxLayout>
+#include <QWidget>
 #ifdef QT_QUICK_LIB
 #include "framelessquickhelper.h"
 #include <QQmlApplicationEngine>
+#include <QQmlProperty>
 #endif
-#include <QPainter>
-#include <QVBoxLayout>
-#include <QWidget>
+
+static inline bool shouldHaveWindowFrame()
+{
+    return QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10;
+}
 
 class FramelessWidget : public QWidget
 {
     Q_OBJECT
-    // Q_DISABLE_COPY_MOVE(FramelessWidget) // Since Qt 5.13
+    Q_DISABLE_COPY_MOVE(FramelessWidget)
 
 public:
-    explicit FramelessWidget(QWidget *parent = nullptr) : QWidget(parent) {}
+    explicit FramelessWidget(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        isWin10OrGreater = shouldHaveWindowFrame();
+    }
     ~FramelessWidget() override = default;
+
+    bool isNormaled() const { return !isMinimized() && !isMaximized() && !isFullScreen(); }
 
 protected:
     void paintEvent(QPaintEvent *event) override
     {
         QWidget::paintEvent(event);
-        QPainter painter(this);
-        painter.save();
-        painter.setPen(isActiveWindow() ? borderColor_active : borderColor_inactive);
-        painter.drawLine(0, 0, width(), 0);
-        painter.drawLine(0, height(), width(), height());
-        painter.drawLine(0, 0, 0, height());
-        painter.drawLine(width(), 0, width(), height());
-        painter.restore();
+        if (isWin10OrGreater && isNormaled()) {
+            QPainter painter(this);
+            painter.save();
+            painter.setPen(isActiveWindow() ? borderColor_active : borderColor_inactive);
+            painter.drawLine(0, 0, width(), 0);
+            // painter.drawLine(0, height(), width(), height());
+            // painter.drawLine(0, 0, 0, height());
+            // painter.drawLine(width(), 0, width(), height());
+            painter.restore();
+        }
     }
 
 private:
-    const QColor borderColor_active = {"#707070"};
+    const QColor borderColor_active = {/*"#707070"*/ "#ffffff"};
     const QColor borderColor_inactive = {"#aaaaaa"};
+    bool isWin10OrGreater = false;
 };
 
 int main(int argc, char *argv[])
@@ -139,6 +178,11 @@ int main(int argc, char *argv[])
         },
         Qt::QueuedConnection);
     engine.load(mainQmlUrl);
+    QList<QObject *> rootObjs = engine.rootObjects();
+    Q_ASSERT(!rootObjs.isEmpty());
+    QObject *rootObj = rootObjs.at(0);
+    Q_ASSERT(rootObj);
+    QQmlProperty::write(rootObj, QString::fromUtf8("isWin10OrGreater"), shouldHaveWindowFrame());
 #endif
 
     return QApplication::exec();

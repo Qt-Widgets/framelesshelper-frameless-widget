@@ -24,6 +24,9 @@
 
 #pragma once
 
+#include "framelesshelper_global.h"
+
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
 #include <QHash>
 #include <QObject>
 #include <QPointer>
@@ -33,7 +36,7 @@ QT_BEGIN_NAMESPACE
 QT_FORWARD_DECLARE_CLASS(QWindow)
 QT_END_NAMESPACE
 
-class FramelessHelper : public QObject
+class FRAMELESSHELPER_EXPORT FramelessHelper : public QObject
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(FramelessHelper)
@@ -94,3 +97,4 @@ private:
     QHash<QObject *, QList<QPointer<QObject>>> m_ignoreObjects = {}, m_draggableObjects = {};
     QHash<QObject *, bool> m_fixedSize = {}, m_disableTitleBar = {};
 };
+#endif
