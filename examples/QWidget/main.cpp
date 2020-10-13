@@ -22,26 +22,34 @@
  * SOFTWARE.
  */
 
-#include "framelesshelper.h"
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
+#ifdef Q_OS_WINDOWS
+#include "../../winnativeeventfilter.h"
+#else
+#include "../../framelesshelper.h"
+#endif
 
 int main(int argc, char *argv[])
 {
+    QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
     // High DPI scaling is enabled by default from Qt 6
 #if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))
+    // Windows: we are using the manifest file to get maximum compatibility
+    // because some APIs are not supprted on old systems such as Windows 7
+    // and Windows 8. And once we have set the DPI awareness level in the
+    // manifest file, any attemptation to try to change it through API will
+    // fail. In other words, Qt won't be able to enable or disable high DPI
+    // scaling or change the DPI awareness level once we have set it in the
+    // manifest file. So the following two lines are uesless actually (However,
+    // they are still useful on other platforms).
     QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QGuiApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-#endif
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 14, 0))
-#if 0
-    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
-        Qt::HighDpiScaleFactorRoundingPolicy::Round);
-#else
     // Don't round the scale factor.
     // This will break QWidget applications because they can't render correctly.
     // Qt Quick applications won't have this issue.
@@ -52,10 +60,12 @@ int main(int argc, char *argv[])
 
     QApplication application(argc, argv);
 
+#ifndef Q_OS_WINDOWS
     FramelessHelper helper;
+#endif
 
     QWidget widget;
-    widget.setContentsMargins(0, 0, 0, 0);
+    widget.setContentsMargins(2, 2, 2, 2);
     QLabel *label = new QLabel;
     QObject::connect(&widget, &QWidget::windowTitleChanged, label, &QLabel::setText);
     QPushButton *minimizeButton = new QPushButton;
@@ -91,10 +101,22 @@ int main(int argc, char *argv[])
     mainLayout->addStretch();
     widget.setLayout(mainLayout);
     widget.setWindowTitle(QObject::tr("Hello, World!"));
+#ifdef Q_OS_WINDOWS
+    WinNativeEventFilter::addFramelessWindow(&widget);
+    const auto data = WinNativeEventFilter::windowData(&widget);
+    if (data) {
+        data->ignoreObjects << minimizeButton << maximizeButton << closeButton;
+    }
+#else
     helper.setIgnoreObjects(&widget, {minimizeButton, maximizeButton, closeButton});
     helper.removeWindowFrame(&widget);
+#endif
     widget.resize(800, 600);
+#ifdef Q_OS_WINDOWS
+    WinNativeEventFilter::moveWindowToDesktopCenter(&widget);
+#else
     FramelessHelper::moveWindowToDesktopCenter(&widget);
+#endif
     widget.show();
 
     return QApplication::exec();

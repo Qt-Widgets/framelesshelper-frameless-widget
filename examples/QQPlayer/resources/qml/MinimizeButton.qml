@@ -26,23 +26,22 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 
 Button {
-    id: button
+    id: control
 
     implicitWidth: 45
     implicitHeight: 30
 
     ToolTip.visible: hovered && !down
     ToolTip.delay: Qt.styleHints.mousePressAndHoldInterval
-    ToolTip.text: qsTr("Close")
+    ToolTip.text: qsTr("Minimize")
 
     contentItem: Image {
-        anchors.fill: parent
-        source: button.down
-                || button.hovered ? "qrc:/images/button_close_white.svg" : "qrc:/images/button_close_black.svg"
+        anchors.fill: control
+        source: "qrc:/images/button_minimize_white.svg"
     }
 
     background: Rectangle {
-        visible: button.down || button.hovered
-        color: button.down ? "#8c0a15" : (button.hovered ? "#e81123" : "transparent")
+        visible: control.down || control.hovered
+        color: control.down ? "#808080" : (control.hovered ? "#c7c7c7" : "transparent")
     }
 }

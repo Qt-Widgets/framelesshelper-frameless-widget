@@ -22,6 +22,10 @@
  * SOFTWARE.
  */
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include "winnativeeventfilter.h"
 
 #include <QDebug>
@@ -30,6 +34,7 @@
 #include <QMargins>
 #include <QWindow>
 #include <QtMath>
+#include <qt_windows.h>
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
 #include <QOperatingSystemVersion>
 #else
@@ -48,6 +53,7 @@
 #include <qpa/qplatformwindow_p.h>
 #endif
 #ifdef WNEF_LINK_SYSLIB
+#include <d2d1.h>
 #include <dwmapi.h>
 #include <shellapi.h>
 #include <shellscalingapi.h>
@@ -55,8 +61,6 @@
 #endif
 
 Q_DECLARE_METATYPE(QMargins)
-
-namespace {
 
 #if (QT_VERSION < QT_VERSION_CHECK(5, 7, 0))
 #define qAsConst(i) std::as_const(i)
@@ -97,6 +101,54 @@ namespace {
 #define ABM_GETAUTOHIDEBAREX 0x0000000b
 #endif
 
+#ifndef WNEF_GENERATE_WINAPI
+#define WNEF_GENERATE_WINAPI(funcName, resultType, ...) \
+    using _WNEF_WINAPI_##funcName = resultType(WINAPI *)(__VA_ARGS__); \
+    _WNEF_WINAPI_##funcName m_lp##funcName = nullptr;
+#endif
+
+#ifndef WNEF_RESOLVE_ERROR
+#ifdef _DEBUG
+#define WNEF_RESOLVE_ERROR(funcName) Q_ASSERT(m_lp##funcName);
+#else
+#define WNEF_RESOLVE_ERROR(funcName) \
+    if (!m_lp##funcName) { \
+        qFatal("Failed to resolve symbol: " #funcName); \
+    }
+#endif
+#endif
+
+#ifndef WNEF_RESOLVE_WINAPI
+#define WNEF_RESOLVE_WINAPI(libName, funcName) \
+    if (!m_lp##funcName) { \
+        m_lp##funcName = reinterpret_cast<_WNEF_WINAPI_##funcName>( \
+            QLibrary::resolve(QString::fromUtf8(#libName), #funcName)); \
+        WNEF_RESOLVE_ERROR(funcName) \
+    }
+#endif
+
+#ifndef WNEF_EXECUTE_WINAPI
+#ifdef WNEF_LINK_SYSLIB
+#define WNEF_EXECUTE_WINAPI(funcName, ...) funcName(__VA_ARGS__);
+#else
+#define WNEF_EXECUTE_WINAPI(funcName, ...) \
+    if (m_lp##funcName) { \
+        m_lp##funcName(__VA_ARGS__); \
+    }
+#endif
+#endif
+
+#ifndef WNEF_EXECUTE_WINAPI_RETURN
+#ifdef WNEF_LINK_SYSLIB
+#define WNEF_EXECUTE_WINAPI_RETURN(funcName, defVal, ...) funcName(__VA_ARGS__)
+#else
+#define WNEF_EXECUTE_WINAPI_RETURN(funcName, defVal, ...) \
+    (m_lp##funcName ? m_lp##funcName(__VA_ARGS__) : defVal)
+#endif
+#endif
+
+namespace {
+
 const UINT m_defaultDotsPerInch = USER_DEFAULT_SCREEN_DPI;
 
 const qreal m_defaultDevicePixelRatio = 1.0;
@@ -132,7 +184,7 @@ bool isWin10OrGreater(const int ver)
 
 bool shouldHaveWindowFrame()
 {
-#ifdef WNEF_WIN10_HAS_WINDOW_FRAME
+#if 0
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 9, 0))
     return QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10;
 #else
@@ -142,52 +194,6 @@ bool shouldHaveWindowFrame()
     return false;
 #endif
 }
-
-#ifndef WNEF_GENERATE_WINAPI
-#define WNEF_GENERATE_WINAPI(funcName, resultType, ...) \
-    using _WNEF_WINAPI_##funcName = resultType(WINAPI *)(__VA_ARGS__); \
-    _WNEF_WINAPI_##funcName m_lp##funcName = nullptr;
-#endif
-
-#ifndef WNEF_RESOLVE_ERROR
-#ifdef _DEBUG
-#define WNEF_RESOLVE_ERROR(funcName) Q_ASSERT(m_lp##funcName);
-#else
-#define WNEF_RESOLVE_ERROR(funcName) \
-    if (!m_lp##funcName) { \
-        qCritical().noquote() << "Failed to resolve symbol" << #funcName; \
-    }
-#endif
-#endif
-
-#ifndef WNEF_RESOLVE_WINAPI
-#define WNEF_RESOLVE_WINAPI(libName, funcName) \
-    if (!m_lp##funcName) { \
-        m_lp##funcName = reinterpret_cast<_WNEF_WINAPI_##funcName>( \
-            QLibrary::resolve(QString::fromUtf8(#libName), #funcName)); \
-        WNEF_RESOLVE_ERROR(funcName) \
-    }
-#endif
-
-#ifndef WNEF_EXECUTE_WINAPI
-#ifdef WNEF_LINK_SYSLIB
-#define WNEF_EXECUTE_WINAPI(funcName, ...) funcName(__VA_ARGS__);
-#else
-#define WNEF_EXECUTE_WINAPI(funcName, ...) \
-    if (m_lp##funcName) { \
-        m_lp##funcName(__VA_ARGS__); \
-    }
-#endif
-#endif
-
-#ifndef WNEF_EXECUTE_WINAPI_RETURN
-#ifdef WNEF_LINK_SYSLIB
-#define WNEF_EXECUTE_WINAPI_RETURN(funcName, defVal, ...) funcName(__VA_ARGS__)
-#else
-#define WNEF_EXECUTE_WINAPI_RETURN(funcName, defVal, ...) \
-    (m_lp##funcName ? m_lp##funcName(__VA_ARGS__) : defVal)
-#endif
-#endif
 
 #ifndef WNEF_LINK_SYSLIB
 
@@ -322,6 +328,22 @@ using BP_PAINTPARAMS = struct _BP_PAINTPARAMS
     CONST BLENDFUNCTION *pBlendFunction;
 };
 
+using D2D1_FACTORY_TYPE = enum _D2D1_FACTORY_TYPE { D2D1_FACTORY_TYPE_SINGLE_THREADED = 0 };
+
+using D2D1_DEBUG_LEVEL = enum _D2D1_DEBUG_LEVEL {
+    D2D1_DEBUG_LEVEL_NONE = 0,
+    D2D1_DEBUG_LEVEL_ERROR = 1,
+    D2D1_DEBUG_LEVEL_WARNING = 2,
+    D2D1_DEBUG_LEVEL_INFORMATION = 3,
+    D2D1_DEBUG_LEVEL_FORCE_DWORD = 0xffffffff
+
+};
+
+using D2D1_FACTORY_OPTIONS = struct _D2D1_FACTORY_OPTIONS
+{
+    D2D1_DEBUG_LEVEL debugLevel;
+};
+
 // Some of the following functions are not used by this code anymore,
 // but we don't remove them completely because we may still need them later.
 WNEF_GENERATE_WINAPI(DwmExtendFrameIntoClientArea, HRESULT, HWND, CONST MARGINS *)
@@ -389,10 +411,8 @@ WNEF_GENERATE_WINAPI(BeginPaint, HDC, HWND, LPPAINTSTRUCT)
 WNEF_GENERATE_WINAPI(EndPaint, BOOL, HWND, CONST PAINTSTRUCT *)
 WNEF_GENERATE_WINAPI(GetCurrentProcess, HANDLE)
 WNEF_GENERATE_WINAPI(IsProcessDPIAware, BOOL)
-#if 0
-WNEF_GENERATE_WINAPI(D2D1CreateFactory, HRESULT, D2D1_FACTORY_TYPE, REFIID,
-                     CONST D2D1_FACTORY_OPTIONS *, void **)
-#endif
+WNEF_GENERATE_WINAPI(
+    D2D1CreateFactory, HRESULT, D2D1_FACTORY_TYPE, REFIID, CONST D2D1_FACTORY_OPTIONS *, void **)
 WNEF_GENERATE_WINAPI(AdjustWindowRectEx, BOOL, LPRECT, DWORD, BOOL, DWORD)
 WNEF_GENERATE_WINAPI(DwmDefWindowProc, BOOL, HWND, UINT, WPARAM, LPARAM, LRESULT *)
 WNEF_GENERATE_WINAPI(DwmGetWindowAttribute, HRESULT, HWND, DWORD, PVOID, DWORD)
@@ -405,9 +425,16 @@ WNEF_GENERATE_WINAPI(CreateRectRgnIndirect, HRGN, CONST RECT *)
 WNEF_GENERATE_WINAPI(GetDCEx, HDC, HWND, HRGN, DWORD)
 WNEF_GENERATE_WINAPI(GetWindowDC, HDC, HWND)
 WNEF_GENERATE_WINAPI(OffsetRect, BOOL, LPRECT, int, int)
+WNEF_GENERATE_WINAPI(GetSystemMenu, HMENU, HWND, BOOL)
+WNEF_GENERATE_WINAPI(SetMenuItemInfoW, BOOL, HMENU, UINT, BOOL, LPCMENUITEMINFOW)
+WNEF_GENERATE_WINAPI(TrackPopupMenu, BOOL, HMENU, UINT, int, int, int, HWND, CONST RECT *)
+WNEF_GENERATE_WINAPI(PostMessageW, BOOL, HWND, UINT, WPARAM, LPARAM)
+WNEF_GENERATE_WINAPI(GetMessagePos, DWORD)
 
 #endif
 
+// These functions were introduced in Win10 1607 or later (mostly),
+// so we always load them dynamically.
 WNEF_GENERATE_WINAPI(GetDpiForMonitor, HRESULT, HMONITOR, MONITOR_DPI_TYPE, UINT *, UINT *)
 WNEF_GENERATE_WINAPI(GetProcessDpiAwareness, HRESULT, HANDLE, PROCESS_DPI_AWARENESS *)
 WNEF_GENERATE_WINAPI(GetSystemDpiForProcess, UINT, HANDLE)
@@ -468,6 +495,11 @@ void ResolveWin32APIs()
     }
     resolved = true;
     // Available since Windows 2000.
+    WNEF_RESOLVE_WINAPI(User32, GetMessagePos)
+    WNEF_RESOLVE_WINAPI(User32, GetSystemMenu)
+    WNEF_RESOLVE_WINAPI(User32, SetMenuItemInfoW)
+    WNEF_RESOLVE_WINAPI(User32, TrackPopupMenu)
+    WNEF_RESOLVE_WINAPI(User32, PostMessageW)
     WNEF_RESOLVE_WINAPI(User32, OffsetRect)
     WNEF_RESOLVE_WINAPI(User32, GetWindowDC)
     WNEF_RESOLVE_WINAPI(User32, GetDCEx)
@@ -532,9 +564,7 @@ void ResolveWin32APIs()
     WNEF_RESOLVE_WINAPI(UxTheme, EndBufferedPaint)
     WNEF_RESOLVE_WINAPI(UxTheme, BeginBufferedPaint)
     // Available since Windows 7.
-#if 0
     WNEF_RESOLVE_WINAPI(D2D1, D2D1CreateFactory)
-#endif
     loadDPIFunctions();
 }
 
@@ -552,10 +582,11 @@ BOOL IsDwmCompositionEnabled()
 
 WINDOWINFO GetInfoForWindow(const HWND handle)
 {
+    Q_ASSERT(handle);
     WINDOWINFO windowInfo;
     SecureZeroMemory(&windowInfo, sizeof(windowInfo));
     windowInfo.cbSize = sizeof(windowInfo);
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         WNEF_EXECUTE_WINAPI(GetWindowInfo, handle, &windowInfo)
     }
     return windowInfo;
@@ -563,10 +594,11 @@ WINDOWINFO GetInfoForWindow(const HWND handle)
 
 MONITORINFO GetMonitorInfoForWindow(const HWND handle)
 {
+    Q_ASSERT(handle);
     MONITORINFO monitorInfo;
     SecureZeroMemory(&monitorInfo, sizeof(monitorInfo));
     monitorInfo.cbSize = sizeof(monitorInfo);
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         const HMONITOR monitor = WNEF_EXECUTE_WINAPI_RETURN(MonitorFromWindow,
                                                             nullptr,
                                                             handle,
@@ -580,7 +612,8 @@ MONITORINFO GetMonitorInfoForWindow(const HWND handle)
 
 BOOL IsFullScreen(const HWND handle)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         const WINDOWINFO windowInfo = GetInfoForWindow(handle);
         const MONITORINFO monitorInfo = GetMonitorInfoForWindow(handle);
         // The only way to judge whether a window is fullscreen or not
@@ -600,7 +633,8 @@ BOOL IsFullScreen(const HWND handle)
 
 BOOL IsTopLevel(const HWND handle)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         if (WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, handle, GWL_STYLE) & WS_CHILD) {
             return FALSE;
         }
@@ -613,7 +647,20 @@ BOOL IsTopLevel(const HWND handle)
     return FALSE;
 }
 
-UINT GetDotsPerInchForWindow(const HWND handle)
+BOOL IsApplicationDpiAware()
+{
+    if (m_lpGetProcessDpiAwareness) {
+        PROCESS_DPI_AWARENESS awareness = PROCESS_DPI_UNAWARE;
+        WNEF_EXECUTE_WINAPI(GetProcessDpiAwareness,
+                            WNEF_EXECUTE_WINAPI_RETURN(GetCurrentProcess, nullptr),
+                            &awareness)
+        return (awareness != PROCESS_DPI_UNAWARE);
+    } else {
+        return WNEF_EXECUTE_WINAPI_RETURN(IsProcessDPIAware, FALSE);
+    }
+}
+
+UINT GetDotsPerInchForSystem()
 {
     const auto getScreenDpi = [](const UINT defaultValue) -> UINT {
 #if 0
@@ -621,15 +668,18 @@ UINT GetDotsPerInchForWindow(const HWND handle)
             // Using Direct2D to get the screen DPI.
             // Available since Windows 7.
             ID2D1Factory *m_pDirect2dFactory = nullptr;
-            if (SUCCEEDED(m_lpD2D1CreateFactory(
-                    D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory),
-                    nullptr, reinterpret_cast<void **>(&m_pDirect2dFactory))) &&
-                m_pDirect2dFactory) {
+            if (SUCCEEDED(WNEF_EXECUTE_WINAPI_RETURN(D2D1CreateFactory,
+                                                     E_FAIL,
+                                                     D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                                                     __uuidof(ID2D1Factory),
+                                                     nullptr,
+                                                     reinterpret_cast<void **>(&m_pDirect2dFactory)))
+                && m_pDirect2dFactory) {
                 m_pDirect2dFactory->ReloadSystemMetrics();
                 FLOAT dpiX = defaultValue, dpiY = defaultValue;
                 m_pDirect2dFactory->GetDesktopDpi(&dpiX, &dpiY);
                 // The values of *dpiX and *dpiY are identical.
-                return qRound(dpiX);
+                return qRound(dpiX == dpiY ? dpiY : dpiX);
             }
         }
 #endif
@@ -645,48 +695,43 @@ UINT GetDotsPerInchForWindow(const HWND handle)
         }
         return defaultValue;
     };
-    bool dpiEnabled = false;
-    if (m_lpGetProcessDpiAwareness) {
-        PROCESS_DPI_AWARENESS awareness = PROCESS_DPI_UNAWARE;
-        WNEF_EXECUTE_WINAPI(GetProcessDpiAwareness,
-                            WNEF_EXECUTE_WINAPI_RETURN(GetCurrentProcess, nullptr),
-                            &awareness)
-        dpiEnabled = awareness != PROCESS_DPI_UNAWARE;
-    } else {
-        dpiEnabled = WNEF_EXECUTE_WINAPI_RETURN(IsProcessDPIAware, FALSE);
+    if (m_lpGetSystemDpiForProcess) {
+        return WNEF_EXECUTE_WINAPI_RETURN(GetSystemDpiForProcess,
+                                          0,
+                                          WNEF_EXECUTE_WINAPI_RETURN(GetCurrentProcess, nullptr));
     }
-    if (!dpiEnabled) {
+    if (m_lpGetDpiForSystem) {
+        return WNEF_EXECUTE_WINAPI_RETURN(GetDpiForSystem, 0);
+    }
+    return getScreenDpi(m_defaultDotsPerInch);
+}
+
+UINT GetDotsPerInchForWindow(const HWND handle)
+{
+    Q_ASSERT(handle);
+    if (!IsApplicationDpiAware()) {
         // Return hard-coded DPI if DPI scaling is disabled.
         return m_defaultDotsPerInch;
     }
-    if (!handle || !WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
-        if (m_lpGetSystemDpiForProcess) {
-            return WNEF_EXECUTE_WINAPI_RETURN(GetSystemDpiForProcess,
-                                              0,
-                                              WNEF_EXECUTE_WINAPI_RETURN(GetCurrentProcess,
-                                                                         nullptr));
-        } else if (m_lpGetDpiForSystem) {
-            return WNEF_EXECUTE_WINAPI_RETURN(GetDpiForSystem, 0);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+        if (m_lpGetDpiForWindow) {
+            return WNEF_EXECUTE_WINAPI_RETURN(GetDpiForWindow, 0, handle);
         }
-        return getScreenDpi(m_defaultDotsPerInch);
+        if (m_lpGetDpiForMonitor) {
+            UINT dpiX = m_defaultDotsPerInch, dpiY = m_defaultDotsPerInch;
+            WNEF_EXECUTE_WINAPI(GetDpiForMonitor,
+                                WNEF_EXECUTE_WINAPI_RETURN(MonitorFromWindow,
+                                                           nullptr,
+                                                           handle,
+                                                           MONITOR_DEFAULTTONEAREST),
+                                MDT_EFFECTIVE_DPI,
+                                &dpiX,
+                                &dpiY)
+            // The values of *dpiX and *dpiY are identical.
+            return dpiX == dpiY ? dpiY : dpiX;
+        }
     }
-    if (m_lpGetDpiForWindow) {
-        return WNEF_EXECUTE_WINAPI_RETURN(GetDpiForWindow, 0, handle);
-    }
-    if (m_lpGetDpiForMonitor) {
-        UINT dpiX = m_defaultDotsPerInch, dpiY = m_defaultDotsPerInch;
-        WNEF_EXECUTE_WINAPI(GetDpiForMonitor,
-                            WNEF_EXECUTE_WINAPI_RETURN(MonitorFromWindow,
-                                                       nullptr,
-                                                       handle,
-                                                       MONITOR_DEFAULTTONEAREST),
-                            MDT_EFFECTIVE_DPI,
-                            &dpiX,
-                            &dpiY)
-        // The values of *dpiX and *dpiY are identical.
-        return dpiX;
-    }
-    return getScreenDpi(m_defaultDotsPerInch);
+    return GetDotsPerInchForSystem();
 }
 
 qreal GetPreferedNumber(const qreal num)
@@ -740,8 +785,9 @@ qreal GetPreferedNumber(const qreal num)
 
 qreal GetDevicePixelRatioForWindow(const HWND handle)
 {
+    Q_ASSERT(handle);
     qreal result = m_defaultDevicePixelRatio;
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         result = static_cast<qreal>(GetDotsPerInchForWindow(handle))
                  / static_cast<qreal>(m_defaultDotsPerInch);
     }
@@ -750,8 +796,9 @@ qreal GetDevicePixelRatioForWindow(const HWND handle)
 
 RECT GetFrameSizeForWindow(const HWND handle, const BOOL includingTitleBar = FALSE)
 {
+    Q_ASSERT(handle);
     RECT rect = {0, 0, 0, 0};
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         const auto style = WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, handle, GWL_STYLE);
         // It's the same with using GetSystemMetrics, the returned values
         // of the two functions are identical.
@@ -785,7 +832,8 @@ RECT GetFrameSizeForWindow(const HWND handle, const BOOL includingTitleBar = FAL
 
 void UpdateFrameMarginsForWindow(const HWND handle)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         MARGINS margins = {0, 0, 0, 0};
         // The frame shadow is drawn on the non-client area and thus we have
         // to make sure the non-client area rendering is enabled first.
@@ -808,7 +856,8 @@ void UpdateFrameMarginsForWindow(const HWND handle)
         // there, we just can't see it).
         if (shouldHaveWindowFrame()) {
             const auto GetTopBorderHeight = [](const HWND handle) -> int {
-                if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+                Q_ASSERT(handle);
+                if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
                     if (IsMaximized(handle) || IsFullScreen(handle) || !IsDwmCompositionEnabled()) {
                         return 0;
                     }
@@ -827,7 +876,8 @@ void UpdateFrameMarginsForWindow(const HWND handle)
 
 int GetSystemMetricsForWindow(const HWND handle, const int index)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         if (m_lpGetSystemMetricsForDpi) {
             return WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetricsForDpi,
                                               0,
@@ -844,19 +894,20 @@ int GetSystemMetricsForWindow(const HWND handle, const int index)
 
 void createUserData(const HWND handle, const WinNativeEventFilter::WINDOWDATA *data = nullptr)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
-        const auto userData = reinterpret_cast<WinNativeEventFilter::WINDOW *>(
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+        const auto userData = reinterpret_cast<WinNativeEventFilter::WINDOWDATA *>(
             WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, handle, GWLP_USERDATA));
         if (userData) {
             if (data) {
-                userData->windowData = *data;
+                *userData = *data;
             }
         } else {
             // Yes, this is a memory leak, but it doesn't hurt much, unless your
             // application has thousands of windows.
-            WinNativeEventFilter::WINDOW *_data = new WinNativeEventFilter::WINDOW;
+            auto *_data = new WinNativeEventFilter::WINDOWDATA;
             if (data) {
-                _data->windowData = *data;
+                *_data = *data;
             }
             WNEF_EXECUTE_WINAPI(SetWindowLongPtrW,
                                 handle,
@@ -869,7 +920,8 @@ void createUserData(const HWND handle, const WinNativeEventFilter::WINDOWDATA *d
 
 QWindow *findQWindowFromRawHandle(const HWND handle)
 {
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    Q_ASSERT(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
         const auto wid = reinterpret_cast<WId>(handle);
         const auto windows = QGuiApplication::topLevelWindows();
         for (auto &&window : qAsConst(windows)) {
@@ -890,6 +942,25 @@ void qCoreAppFixup()
     }
 }
 
+HWND getHWNDFromQObject(QObject *object)
+{
+    Q_ASSERT(object);
+    WId wid = 0;
+    if (object->isWindowType()) {
+        wid = qobject_cast<QWindow *>(object)->winId();
+    }
+#ifdef QT_WIDGETS_LIB
+    else if (object->isWidgetType()) {
+        wid = qobject_cast<QWidget *>(object)->winId();
+    }
+#endif
+    else {
+        qFatal(
+            "Can't acquire the window handle: only top level QWidgets and QWindows are accepted.");
+    }
+    return reinterpret_cast<HWND>(wid);
+}
+
 // The standard values of border width, border height and title bar height
 // when DPI is 96.
 const int m_defaultBorderWidth = 8, m_defaultBorderHeight = 8, m_defaultTitleBarHeight = 30;
@@ -902,7 +973,78 @@ const int kAutoHideTaskbarThicknessPy = kAutoHideTaskbarThicknessPx;
 
 QScopedPointer<WinNativeEventFilter> m_instance;
 
-QList<HWND> m_framelessWindows;
+QList<HWND> m_framelessWindows = {};
+
+void install()
+{
+    qCoreAppFixup();
+    if (m_instance.isNull()) {
+        m_instance.reset(new WinNativeEventFilter);
+        qApp->installNativeEventFilter(m_instance.data());
+    }
+}
+
+#if 0
+void uninstall()
+{
+    if (!m_instance.isNull()) {
+        qApp->removeNativeEventFilter(m_instance.data());
+        m_instance.reset();
+    }
+    if (!m_framelessWindows.isEmpty()) {
+        m_framelessWindows.clear();
+    }
+}
+#endif
+
+void updateQtFrame_internal(const HWND handle)
+{
+    Q_ASSERT(handle);
+    ResolveWin32APIs();
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+        const int tbh = WinNativeEventFilter::getSystemMetric(
+            handle, WinNativeEventFilter::SystemMetric::TitleBarHeight);
+#ifdef QT_WIDGETS_LIB
+        const QWidget *widget = QWidget::find(reinterpret_cast<WId>(handle));
+        if (widget && widget->isTopLevel()) {
+            QWindow *window = widget->windowHandle();
+            if (window) {
+                WinNativeEventFilter::updateQtFrame(window, tbh);
+                return;
+            }
+        }
+#endif
+        QWindow *window = findQWindowFromRawHandle(handle);
+        if (window) {
+            WinNativeEventFilter::updateQtFrame(window, tbh);
+        }
+    }
+}
+
+bool displaySystemMenu_internal(const HWND handle, const bool isRtl, const LPARAM lParam)
+{
+    Q_ASSERT(handle);
+    ResolveWin32APIs();
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+        const POINT globalMouse{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        POINT localMouse = globalMouse;
+        WNEF_EXECUTE_WINAPI(ScreenToClient, handle, &localMouse)
+        const int bh
+            = WinNativeEventFilter::getSystemMetric(handle,
+                                                    WinNativeEventFilter::SystemMetric::BorderHeight,
+                                                    true);
+        const int tbh = WinNativeEventFilter::getSystemMetric(
+            handle, WinNativeEventFilter::SystemMetric::TitleBarHeight, true);
+        const bool isTitleBar = localMouse.y <= (tbh + bh);
+        if (isTitleBar && !IsFullScreen(handle)) {
+            return WinNativeEventFilter::displaySystemMenu(handle,
+                                                           isRtl,
+                                                           globalMouse.x,
+                                                           globalMouse.y);
+        }
+    }
+    return false;
+}
 
 } // namespace
 
@@ -914,45 +1056,7 @@ WinNativeEventFilter::WinNativeEventFilter()
 
 WinNativeEventFilter::~WinNativeEventFilter() = default;
 
-void WinNativeEventFilter::install()
-{
-    qCoreAppFixup();
-    if (m_instance.isNull()) {
-        m_instance.reset(new WinNativeEventFilter);
-        qApp->installNativeEventFilter(m_instance.data());
-    }
-}
-
-void WinNativeEventFilter::uninstall()
-{
-    if (!m_instance.isNull()) {
-        qApp->removeNativeEventFilter(m_instance.data());
-        m_instance.reset();
-    }
-    if (!m_framelessWindows.isEmpty()) {
-        m_framelessWindows.clear();
-    }
-}
-
-QList<HWND> WinNativeEventFilter::framelessWindows()
-{
-    return m_framelessWindows;
-}
-
-void WinNativeEventFilter::setFramelessWindows(const QList<HWND> &windows)
-{
-    qCoreAppFixup();
-    if (!windows.isEmpty() && (windows != m_framelessWindows)) {
-        m_framelessWindows = windows;
-        for (auto &&window : qAsConst(m_framelessWindows)) {
-            createUserData(window);
-            updateQtFrame_internal(window);
-        }
-        install();
-    }
-}
-
-void WinNativeEventFilter::addFramelessWindow(const HWND window,
+void WinNativeEventFilter::addFramelessWindow(void *window,
                                               const WINDOWDATA *data,
                                               const bool center,
                                               const int x,
@@ -960,28 +1064,49 @@ void WinNativeEventFilter::addFramelessWindow(const HWND window,
                                               const int width,
                                               const int height)
 {
+    Q_ASSERT(window);
     ResolveWin32APIs();
     qCoreAppFixup();
-    if (window && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, window)
-        && !m_framelessWindows.contains(window)) {
-        m_framelessWindows.append(window);
-        createUserData(window, data);
+    const auto hwnd = reinterpret_cast<HWND>(window);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd) && !m_framelessWindows.contains(hwnd)) {
+        m_framelessWindows.append(hwnd);
+        createUserData(hwnd, data);
         install();
-        updateQtFrame_internal(window);
-    }
-    if ((x > 0) && (y > 0) && (width > 0) && (height > 0)) {
-        setWindowGeometry(window, x, y, width, height);
-    }
-    if (center) {
-        moveWindowToDesktopCenter(window);
+        updateQtFrame_internal(hwnd);
+        if ((x > 0) && (y > 0) && (width > 0) && (height > 0)) {
+            setWindowGeometry(hwnd, x, y, width, height);
+        }
+        if (center) {
+            moveWindowToDesktopCenter(hwnd);
+        }
     }
 }
 
-void WinNativeEventFilter::removeFramelessWindow(const HWND window)
+void WinNativeEventFilter::addFramelessWindow(QObject *window,
+                                              const WINDOWDATA *data,
+                                              const bool center,
+                                              const int x,
+                                              const int y,
+                                              const int width,
+                                              const int height)
 {
-    if (window && m_framelessWindows.contains(window)) {
-        m_framelessWindows.removeAll(window);
+    Q_ASSERT(window);
+    addFramelessWindow(getHWNDFromQObject(window), data, center, x, y, width, height);
+}
+
+void WinNativeEventFilter::removeFramelessWindow(void *window)
+{
+    Q_ASSERT(window);
+    const auto hwnd = reinterpret_cast<HWND>(window);
+    if (m_framelessWindows.contains(hwnd)) {
+        m_framelessWindows.removeAll(hwnd);
     }
+}
+
+void WinNativeEventFilter::removeFramelessWindow(QObject *window)
+{
+    Q_ASSERT(window);
+    removeFramelessWindow(getHWNDFromQObject(window));
 }
 
 void WinNativeEventFilter::clearFramelessWindows()
@@ -1032,7 +1157,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
         } else if (!m_framelessWindows.contains(msg->hwnd)) {
             return false;
         }
-        const auto data = reinterpret_cast<WINDOW *>(
+        const auto data = reinterpret_cast<WINDOWDATA *>(
             WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, msg->hwnd, GWLP_USERDATA));
         if (!data) {
             // Work-around a long existing Windows bug.
@@ -1062,12 +1187,12 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
         }
         if (!data->initialized) {
             // Avoid initializing a same window twice.
-            data->initialized = TRUE;
+            data->initialized = true;
             // Don't restore the window styles to default when you are
             // developing Qt Quick applications because the QWindow
             // will disappear once you do it. However, Qt Widgets applications
             // are not affected. Don't know why currently.
-            if (data->windowData.restoreDefaultWindowStyle) {
+            if (data->restoreDefaultWindowStyle) {
                 // Restore default window style.
                 // WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU
                 // | WS_THICKFRAME |  WS_MINIMIZEBOX | WS_MAXIMIZEBOX
@@ -1084,7 +1209,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                                     WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS)
                 updateWindow(msg->hwnd, true, false);
             }
-            if (data->windowData.enableLayeredWindow) {
+            if (data->enableLayeredWindow) {
                 // Turn our window into a layered window to get better
                 // performance and hopefully, to get rid of some strange bugs at
                 // the same time. But this will break the Arcylic effect
@@ -1337,6 +1462,12 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             if (shouldHaveWindowFrame()) {
                 *result = 0;
             }
+            if (!shouldHaveWindowFrame() && !IsFullScreen(msg->hwnd) && !IsMaximized(msg->hwnd)
+                && !IsMinimized(msg->hwnd)) {
+                // Fix the flickering problem when resizing.
+                clientRect->bottom -= 1;
+                //*result = 0;
+            }
             return true;
         }
         // These undocumented messages are sent to draw themed window
@@ -1457,7 +1588,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             // another branch, if you are interested in it, you can give it a
             // try.
 
-            if (data->windowData.mouseTransparent) {
+            if (data->mouseTransparent) {
                 // Mouse events will be passed to the parent window.
                 *result = HTTRANSPARENT;
                 return true;
@@ -1528,29 +1659,28 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             const POINT globalMouse{GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
             POINT localMouse = globalMouse;
             WNEF_EXECUTE_WINAPI(ScreenToClient, msg->hwnd, &localMouse)
-            const auto &_data = data->windowData;
             const qreal dpr = GetDevicePixelRatioForWindow(msg->hwnd);
             const bool isInIgnoreAreas = isInSpecificAreas(localMouse.x,
                                                            localMouse.y,
-                                                           _data.ignoreAreas,
+                                                           data->ignoreAreas,
                                                            dpr);
-            const bool customDragAreas = !_data.draggableAreas.isEmpty();
+            const bool customDragAreas = !data->draggableAreas.isEmpty();
             const bool isInDraggableAreas = customDragAreas
                                                 ? isInSpecificAreas(localMouse.x,
                                                                     localMouse.y,
-                                                                    _data.draggableAreas,
+                                                                    data->draggableAreas,
                                                                     dpr)
                                                 : true;
 #if defined(QT_WIDGETS_LIB) || defined(QT_QUICK_LIB)
             const bool isInIgnoreObjects = isInSpecificObjects(globalMouse.x,
                                                                globalMouse.y,
-                                                               _data.ignoreObjects,
+                                                               data->ignoreObjects,
                                                                dpr);
-            const bool customDragObjects = !_data.draggableObjects.isEmpty();
+            const bool customDragObjects = !data->draggableObjects.isEmpty();
             const bool isInDraggableObjects = customDragObjects
                                                   ? isInSpecificObjects(globalMouse.x,
                                                                         globalMouse.y,
-                                                                        _data.draggableObjects,
+                                                                        data->draggableObjects,
                                                                         dpr)
                                                   : true;
 #else
@@ -1567,7 +1697,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             const LONG tbh = getSystemMetric(msg->hwnd, SystemMetric::TitleBarHeight, true);
             const bool isTitleBar = (customDrag ? (isInDraggableAreas && isInDraggableObjects)
                                                 : (localMouse.y <= (tbh + bh)))
-                                    && isResizePermitted && !_data.disableTitleBar;
+                                    && isResizePermitted && !data->disableTitleBar;
             const bool isTop = (localMouse.y <= bh) && isResizePermitted;
             if (shouldHaveWindowFrame()) {
                 // This will handle the left, right and bottom parts of the frame
@@ -1601,6 +1731,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 const auto getHTResult =
                     [isTitleBar, localMouse, bh, isTop](const HWND _hWnd,
                                                         const WINDOWDATA &_data) -> LRESULT {
+                    Q_ASSERT(_hWnd);
                     RECT clientRect = {0, 0, 0, 0};
                     WNEF_EXECUTE_WINAPI(GetClientRect, _hWnd, &clientRect)
                     const LONG ww = clientRect.right;
@@ -1652,7 +1783,7 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                     }
                     return HTCLIENT;
                 };
-                *result = getHTResult(msg->hwnd, _data);
+                *result = getHTResult(msg->hwnd, *data);
                 return true;
             }
         }
@@ -1675,22 +1806,22 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
                 mmi->ptMaxPosition.x = rcMonitorArea.left;
                 mmi->ptMaxPosition.y = rcMonitorArea.top;
             }
-            if (data->windowData.maximumSize.isEmpty()) {
+            if (data->maximumSize.isEmpty()) {
                 mmi->ptMaxSize.x = qAbs(rcWorkArea.right - rcWorkArea.left);
                 mmi->ptMaxSize.y = qAbs(rcWorkArea.bottom - rcWorkArea.top);
             } else {
                 mmi->ptMaxSize.x = qRound(GetDevicePixelRatioForWindow(msg->hwnd)
-                                          * data->windowData.maximumSize.width());
+                                          * data->maximumSize.width());
                 mmi->ptMaxSize.y = qRound(GetDevicePixelRatioForWindow(msg->hwnd)
-                                          * data->windowData.maximumSize.height());
+                                          * data->maximumSize.height());
             }
             mmi->ptMaxTrackSize.x = mmi->ptMaxSize.x;
             mmi->ptMaxTrackSize.y = mmi->ptMaxSize.y;
-            if (!data->windowData.minimumSize.isEmpty()) {
+            if (!data->minimumSize.isEmpty()) {
                 mmi->ptMinTrackSize.x = qRound(GetDevicePixelRatioForWindow(msg->hwnd)
-                                               * data->windowData.minimumSize.width());
+                                               * data->minimumSize.width());
                 mmi->ptMinTrackSize.y = qRound(GetDevicePixelRatioForWindow(msg->hwnd)
-                                               * data->windowData.minimumSize.height());
+                                               * data->minimumSize.height());
             }
             *result = 0;
             return true;
@@ -1747,6 +1878,19 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
             // to do this yourself. See:
             // https://code.qt.io/cgit/qt/qtbase.git/tree/src/plugins/platforms/windows/qwindowscontext.cpp
             break;
+        case WM_CONTEXTMENU: {
+            // If the context menu is brought up from the keyboard
+            // (SHIFT + F10 or the context menu key), lParam will be -1.
+            const LPARAM lParam = (msg->lParam == -1) ? WNEF_EXECUTE_WINAPI_RETURN(GetMessagePos, 0)
+                                                      : msg->lParam;
+            if (displaySystemMenu_internal(msg->hwnd, false, lParam)) {
+                // The WM_CONTEXTMENU message has no return value so there's
+                // no need to modify *result.
+                return true;
+            } else {
+                break;
+            }
+        }
         default:
             break;
         }
@@ -1754,24 +1898,39 @@ bool WinNativeEventFilter::nativeEventFilter(const QByteArray &eventType,
     return false;
 }
 
-void WinNativeEventFilter::setWindowData(const HWND window, const WINDOWDATA *data)
+void WinNativeEventFilter::setWindowData(void *window, const WINDOWDATA *data)
 {
+    Q_ASSERT(window);
     ResolveWin32APIs();
-    if (window && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, window) && data) {
-        createUserData(window, data);
+    const auto hwnd = reinterpret_cast<HWND>(window);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd) && data) {
+        createUserData(hwnd, data);
     }
 }
 
-WinNativeEventFilter::WINDOWDATA *WinNativeEventFilter::windowData(const HWND window)
+void WinNativeEventFilter::setWindowData(QObject *window, const WINDOWDATA *data)
 {
+    Q_ASSERT(window);
+    setWindowData(getHWNDFromQObject(window), data);
+}
+
+WinNativeEventFilter::WINDOWDATA *WinNativeEventFilter::windowData(void *window)
+{
+    Q_ASSERT(window);
     ResolveWin32APIs();
-    if (window && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, window)) {
-        createUserData(window);
-        return &(reinterpret_cast<WINDOW *>(
-                     WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, window, GWLP_USERDATA))
-                     ->windowData);
+    const auto hwnd = reinterpret_cast<HWND>(window);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd)) {
+        createUserData(hwnd);
+        return reinterpret_cast<WINDOWDATA *>(
+            WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, hwnd, GWLP_USERDATA));
     }
     return nullptr;
+}
+
+WinNativeEventFilter::WINDOWDATA *WinNativeEventFilter::windowData(QObject *window)
+{
+    Q_ASSERT(window);
+    return windowData(getHWNDFromQObject(window));
 }
 
 void WinNativeEventFilter::setBorderWidth(const int bw)
@@ -1789,15 +1948,17 @@ void WinNativeEventFilter::setTitleBarHeight(const int tbh)
     m_titleBarHeight = tbh;
 }
 
-void WinNativeEventFilter::updateWindow(const HWND handle,
+void WinNativeEventFilter::updateWindow(void *handle,
                                         const bool triggerFrameChange,
                                         const bool redraw)
 {
+    Q_ASSERT(handle);
     ResolveWin32APIs();
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
+    const auto hwnd = reinterpret_cast<HWND>(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd)) {
         if (triggerFrameChange) {
             WNEF_EXECUTE_WINAPI(SetWindowPos,
-                                handle,
+                                hwnd,
                                 nullptr,
                                 0,
                                 0,
@@ -1808,7 +1969,7 @@ void WinNativeEventFilter::updateWindow(const HWND handle,
         }
         if (redraw) {
             WNEF_EXECUTE_WINAPI(RedrawWindow,
-                                handle,
+                                hwnd,
                                 nullptr,
                                 nullptr,
                                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOCHILDREN)
@@ -1816,54 +1977,56 @@ void WinNativeEventFilter::updateWindow(const HWND handle,
     }
 }
 
-int WinNativeEventFilter::getSystemMetric(const HWND handle,
+int WinNativeEventFilter::getSystemMetric(void *handle,
                                           const SystemMetric metric,
                                           const bool dpiAware)
 {
+    Q_ASSERT(handle);
     ResolveWin32APIs();
-    const qreal dpr = dpiAware ? GetDevicePixelRatioForWindow(handle) : m_defaultDevicePixelRatio;
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
-        createUserData(handle);
-        const auto userData = reinterpret_cast<WINDOW *>(
-            WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, handle, GWLP_USERDATA));
+    const auto hwnd = reinterpret_cast<HWND>(handle);
+    const qreal dpr = dpiAware ? GetDevicePixelRatioForWindow(hwnd) : m_defaultDevicePixelRatio;
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd)) {
+        createUserData(hwnd);
+        const auto userData = reinterpret_cast<WINDOWDATA *>(
+            WNEF_EXECUTE_WINAPI_RETURN(GetWindowLongPtrW, 0, hwnd, GWLP_USERDATA));
         switch (metric) {
         case SystemMetric::BorderWidth: {
-            const int bw = userData->windowData.borderWidth;
+            const int bw = userData->borderWidth;
             if (bw > 0) {
                 return qRound(bw * dpr);
             } else {
                 const int result_nondpi
                     = WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetrics, 0, SM_CXSIZEFRAME)
                       + WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetrics, 0, SM_CXPADDEDBORDER);
-                const int result_dpi = GetSystemMetricsForWindow(handle, SM_CXSIZEFRAME)
-                                       + GetSystemMetricsForWindow(handle, SM_CXPADDEDBORDER);
+                const int result_dpi = GetSystemMetricsForWindow(hwnd, SM_CXSIZEFRAME)
+                                       + GetSystemMetricsForWindow(hwnd, SM_CXPADDEDBORDER);
                 const int result = dpiAware ? result_dpi : result_nondpi;
                 return result > 0 ? result : qRound(m_defaultBorderWidth * dpr);
             }
         }
         case SystemMetric::BorderHeight: {
-            const int bh = userData->windowData.borderHeight;
+            const int bh = userData->borderHeight;
             if (bh > 0) {
                 return qRound(bh * dpr);
             } else {
                 const int result_nondpi
                     = WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetrics, 0, SM_CYSIZEFRAME)
                       + WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetrics, 0, SM_CXPADDEDBORDER);
-                const int result_dpi = GetSystemMetricsForWindow(handle, SM_CYSIZEFRAME)
-                                       + GetSystemMetricsForWindow(handle, SM_CXPADDEDBORDER);
+                const int result_dpi = GetSystemMetricsForWindow(hwnd, SM_CYSIZEFRAME)
+                                       + GetSystemMetricsForWindow(hwnd, SM_CXPADDEDBORDER);
                 const int result = dpiAware ? result_dpi : result_nondpi;
                 return result > 0 ? result : qRound(m_defaultBorderHeight * dpr);
             }
         }
         case SystemMetric::TitleBarHeight: {
-            const int tbh = userData->windowData.titleBarHeight;
+            const int tbh = userData->titleBarHeight;
             if (tbh > 0) {
                 return qRound(tbh * dpr);
             } else {
                 const int result_nondpi = WNEF_EXECUTE_WINAPI_RETURN(GetSystemMetrics,
                                                                      0,
                                                                      SM_CYCAPTION);
-                const int result_dpi = GetSystemMetricsForWindow(handle, SM_CYCAPTION);
+                const int result_dpi = GetSystemMetricsForWindow(hwnd, SM_CYCAPTION);
                 const int result = dpiAware ? result_dpi : result_nondpi;
                 return result > 0 ? result : qRound(m_defaultTitleBarHeight * dpr);
             }
@@ -1894,26 +2057,30 @@ int WinNativeEventFilter::getSystemMetric(const HWND handle,
 }
 
 void WinNativeEventFilter::setWindowGeometry(
-    const HWND handle, const int x, const int y, const int width, const int height)
+    void *handle, const int x, const int y, const int width, const int height)
 {
+    Q_ASSERT(handle);
     ResolveWin32APIs();
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle) && (x > 0) && (y > 0)
-        && (width > 0) && (height > 0)) {
-        const qreal dpr = GetDevicePixelRatioForWindow(handle);
+    const auto hwnd = reinterpret_cast<HWND>(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd) && (x > 0) && (y > 0) && (width > 0)
+        && (height > 0)) {
+        const qreal dpr = GetDevicePixelRatioForWindow(hwnd);
         // Why not use SetWindowPos? Actually we can, but MoveWindow
         // sends the WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED, WM_MOVE,
         // WM_SIZE, and WM_NCCALCSIZE messages to the window.
         // SetWindowPos only sends WM_WINDOWPOSCHANGED.
-        WNEF_EXECUTE_WINAPI(MoveWindow, handle, x, y, qRound(width * dpr), qRound(height * dpr), TRUE)
+        WNEF_EXECUTE_WINAPI(MoveWindow, hwnd, x, y, qRound(width * dpr), qRound(height * dpr), TRUE)
     }
 }
 
-void WinNativeEventFilter::moveWindowToDesktopCenter(const HWND handle)
+void WinNativeEventFilter::moveWindowToDesktopCenter(void *handle)
 {
+    Q_ASSERT(handle);
     ResolveWin32APIs();
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
-        const WINDOWINFO windowInfo = GetInfoForWindow(handle);
-        const MONITORINFO monitorInfo = GetMonitorInfoForWindow(handle);
+    const auto hwnd = reinterpret_cast<HWND>(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd)) {
+        const WINDOWINFO windowInfo = GetInfoForWindow(hwnd);
+        const MONITORINFO monitorInfo = GetMonitorInfoForWindow(hwnd);
         // If we want to move a window to the center of the desktop,
         // I think we should use rcMonitor, the monitor's whole area,
         // to calculate the new coordinates of our window, not rcWork.
@@ -1922,7 +2089,7 @@ void WinNativeEventFilter::moveWindowToDesktopCenter(const HWND handle)
         const LONG ww = qAbs(windowInfo.rcWindow.right - windowInfo.rcWindow.left);
         const LONG wh = qAbs(windowInfo.rcWindow.bottom - windowInfo.rcWindow.top);
         WNEF_EXECUTE_WINAPI(MoveWindow,
-                            handle,
+                            hwnd,
                             qRound((mw - ww) / 2.0),
                             qRound((mh - wh) / 2.0),
                             ww,
@@ -1933,7 +2100,8 @@ void WinNativeEventFilter::moveWindowToDesktopCenter(const HWND handle)
 
 void WinNativeEventFilter::updateQtFrame(QWindow *window, const int titleBarHeight)
 {
-    if (window && (titleBarHeight > 0)) {
+    Q_ASSERT(window);
+    if (titleBarHeight > 0) {
         // Reduce top frame to zero since we paint it ourselves. Use
         // device pixel to avoid rounding errors.
         const QMargins margins = {0, -titleBarHeight, 0, 0};
@@ -1951,7 +2119,7 @@ void WinNativeEventFilter::updateQtFrame(QWindow *window, const int titleBarHeig
                                     marginsVar);
         }
 #else
-        auto *platformWindow = dynamic_cast<QPlatformInterface::Private::QWindowsWindow *>(
+        auto *platformWindow = qobject_cast<QNativeInterface::Private::QWindowsWindow *>(
             window->handle());
         if (platformWindow) {
             platformWindow->setCustomMargins(margins);
@@ -1960,24 +2128,55 @@ void WinNativeEventFilter::updateQtFrame(QWindow *window, const int titleBarHeig
     }
 }
 
-void WinNativeEventFilter::updateQtFrame_internal(const HWND handle)
+bool WinNativeEventFilter::displaySystemMenu(void *handle,
+                                             const bool isRtl,
+                                             const int x,
+                                             const int y)
 {
+    Q_ASSERT(handle);
     ResolveWin32APIs();
-    if (handle && WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, handle)) {
-        const int tbh = getSystemMetric(handle, SystemMetric::TitleBarHeight);
-#ifdef QT_WIDGETS_LIB
-        const QWidget *widget = QWidget::find(reinterpret_cast<WId>(handle));
-        if (widget && widget->isTopLevel()) {
-            QWindow *window = widget->windowHandle();
-            if (window) {
-                updateQtFrame(window, tbh);
-                return;
+    const auto hwnd = reinterpret_cast<HWND>(handle);
+    if (WNEF_EXECUTE_WINAPI_RETURN(IsWindow, FALSE, hwnd)) {
+        const HMENU hMenu = WNEF_EXECUTE_WINAPI_RETURN(GetSystemMenu, nullptr, hwnd, FALSE);
+        if (hMenu) {
+            MENUITEMINFOW mii;
+            SecureZeroMemory(&mii, sizeof(mii));
+            mii.cbSize = sizeof(mii);
+            mii.fMask = MIIM_STATE;
+            mii.fType = 0;
+            mii.fState = MF_ENABLED;
+            WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_RESTORE, FALSE, &mii)
+            WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_SIZE, FALSE, &mii)
+            WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MOVE, FALSE, &mii)
+            WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MAXIMIZE, FALSE, &mii)
+            WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MINIMIZE, FALSE, &mii)
+            mii.fState = MF_GRAYED;
+            if (IsFullScreen(hwnd) || IsMaximized(hwnd)) {
+                WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_SIZE, FALSE, &mii)
+                WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MOVE, FALSE, &mii)
+                WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MAXIMIZE, FALSE, &mii)
+            } else if (IsMinimized(hwnd)) {
+                WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_MINIMIZE, FALSE, &mii)
+            } else {
+                WNEF_EXECUTE_WINAPI(SetMenuItemInfoW, hMenu, SC_RESTORE, FALSE, &mii)
+            }
+            const LPARAM cmd = WNEF_EXECUTE_WINAPI_RETURN(TrackPopupMenu,
+                                                          0,
+                                                          hMenu,
+                                                          (TPM_LEFTBUTTON | TPM_RIGHTBUTTON
+                                                           | TPM_RETURNCMD | TPM_TOPALIGN
+                                                           | (isRtl ? TPM_RIGHTALIGN
+                                                                    : TPM_LEFTALIGN)),
+                                                          x,
+                                                          y,
+                                                          0,
+                                                          hwnd,
+                                                          nullptr);
+            if (cmd) {
+                WNEF_EXECUTE_WINAPI(PostMessageW, hwnd, WM_SYSCOMMAND, cmd, 0)
+                return true;
             }
         }
-#endif
-        QWindow *window = findQWindowFromRawHandle(handle);
-        if (window) {
-            updateQtFrame(window, tbh);
-        }
     }
+    return false;
 }
