@@ -58,6 +58,18 @@ class FRAMELESSHELPER_EXPORT FramelessQuickHelper : public QQuickItem
     Q_PROPERTY(QSize maximumSize READ maximumSize WRITE setMaximumSize NOTIFY maximumSizeChanged)
     Q_PROPERTY(bool titleBarEnabled READ titleBarEnabled WRITE setTitleBarEnabled NOTIFY
                    titleBarEnabledChanged)
+#ifdef Q_OS_WINDOWS
+    Q_PROPERTY(bool canHaveWindowFrame READ canHaveWindowFrame CONSTANT)
+    Q_PROPERTY(bool colorizationEnabled READ colorizationEnabled NOTIFY colorizationEnabledChanged)
+    Q_PROPERTY(QColor colorizationColor READ colorizationColor NOTIFY colorizationColorChanged)
+    Q_PROPERTY(bool lightThemeEnabled READ lightThemeEnabled NOTIFY lightThemeEnabledChanged)
+    Q_PROPERTY(bool darkThemeEnabled READ darkThemeEnabled NOTIFY darkThemeEnabledChanged)
+    Q_PROPERTY(bool highContrastModeEnabled READ highContrastModeEnabled NOTIFY
+                   highContrastModeEnabledChanged)
+    Q_PROPERTY(bool darkFrameEnabled READ darkFrameEnabled NOTIFY darkFrameEnabledChanged)
+    Q_PROPERTY(bool transparencyEffectEnabled READ transparencyEffectEnabled NOTIFY
+                   transparencyEffectEnabledChanged)
+#endif
 
 public:
     explicit FramelessQuickHelper(QQuickItem *parent = nullptr);
@@ -84,28 +96,47 @@ public:
     bool titleBarEnabled() const;
     void setTitleBarEnabled(const bool val);
 
+#ifdef Q_OS_WINDOWS
+    bool canHaveWindowFrame() const;
+    bool colorizationEnabled() const;
+    QColor colorizationColor() const;
+    bool lightThemeEnabled() const;
+    bool darkThemeEnabled() const;
+    bool highContrastModeEnabled() const;
+    bool darkFrameEnabled() const;
+    bool transparencyEffectEnabled() const;
+#endif
+
 public Q_SLOTS:
-    void removeWindowFrame(const bool center = true);
+    void removeWindowFrame(const bool center = false);
+
     void moveWindowToDesktopCenter(const bool realCenter = true);
+
     QSize desktopSize() const;
     QRect desktopAvailableGeometry() const;
     QSize desktopAvailableSize() const;
 
-    void setIgnoreAreas(const QList<QRect> &val);
-    void clearIgnoreAreas();
     void addIgnoreArea(const QRect &val);
-
-    void setDraggableAreas(const QList<QRect> &val);
-    void clearDraggableAreas();
     void addDraggableArea(const QRect &val);
 
-    void setIgnoreObjects(const QList<QQuickItem *> &val);
-    void clearIgnoreObjects();
     void addIgnoreObject(QQuickItem *val);
-
-    void setDraggableObjects(const QList<QQuickItem *> &val);
-    void clearDraggableObjects();
     void addDraggableObject(QQuickItem *val);
+
+#ifdef Q_OS_WINDOWS
+    void setWindowFrameVisible(const bool value = true);
+    void displaySystemMenu(const int x, const int y, const bool isRtl = false);
+    void setBlurEffectEnabled(const bool enabled = true,
+                              const bool forceAcrylic = false,
+                              const QColor &gradientColor = Qt::white);
+#endif
+
+#ifdef Q_OS_WINDOWS
+protected:
+    void timerEvent(QTimerEvent *event) override;
+
+private:
+    void *rawHandle() const;
+#endif
 
 Q_SIGNALS:
     void borderWidthChanged(int);
@@ -115,4 +146,13 @@ Q_SIGNALS:
     void minimumSizeChanged(const QSize &);
     void maximumSizeChanged(const QSize &);
     void titleBarEnabledChanged(bool);
+#ifdef Q_OS_WINDOWS
+    void colorizationEnabledChanged(bool);
+    void colorizationColorChanged(const QColor &);
+    void lightThemeEnabledChanged(bool);
+    void darkThemeEnabledChanged(bool);
+    void highContrastModeEnabledChanged(bool);
+    void darkFrameEnabledChanged(bool);
+    void transparencyEffectEnabledChanged(bool);
+#endif
 };

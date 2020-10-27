@@ -23,8 +23,8 @@ find_package(Qt5 COMPONENTS Widgets Quick)
 
 set(SOURCES
     framelesshelper_global.h
-    framelesshelper.h
-    framelesshelper.cpp
+    framelesswindowsmanager.h
+    framelesswindowsmanager.cpp
 )
 
 if(Qt5Quick_FOUND)
@@ -38,6 +38,11 @@ if(WIN32)
     list(APPEND SOURCES
         winnativeeventfilter.h
         winnativeeventfilter.cpp
+    )
+else()
+    list(APPEND SOURCES
+        framelesshelper.h
+        framelesshelper.cpp
     )
 endif()
 
@@ -69,12 +74,11 @@ if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32_LEAN_AND_MEAN
         _CRT_SECURE_NO_WARNINGS
+        WNEF_LINK_SYSLIB
     )
-    if(LINK_TO_SYSTEM_DLL)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            WNEF_LINK_SYSLIB
-        )
-    endif()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        user32 shell32 gdi32 dwmapi shcore uxtheme d2d1
+    )
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::GuiPrivate)
 if(Qt5Widgets_FOUND)

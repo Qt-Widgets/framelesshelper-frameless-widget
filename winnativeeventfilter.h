@@ -26,11 +26,13 @@
 
 #include "framelesshelper_global.h"
 #include <QAbstractNativeEventFilter>
-#include <QPointer>
+#include <QColor>
+#include <QList>
 #include <QRect>
 
 QT_BEGIN_NAMESPACE
 QT_FORWARD_DECLARE_CLASS(QWindow)
+QT_FORWARD_DECLARE_CLASS(QObject)
 QT_END_NAMESPACE
 
 #if (QT_VERSION < QT_VERSION_CHECK(5, 13, 0))
@@ -52,17 +54,18 @@ public:
     {
         bool initialized = false /* Internal use only, don't modify it from outside */,
              fixedSize = false, mouseTransparent = false, restoreDefaultWindowStyle = false,
-             enableLayeredWindow = false, disableTitleBar = false;
+             enableLayeredWindow = false, disableTitleBar = false, enableBlurBehindWindow = false;
         int borderWidth = -1, borderHeight = -1, titleBarHeight = -1;
         QList<QRect> ignoreAreas = {}, draggableAreas = {};
-        QList<QPointer<QObject>> ignoreObjects = {}, draggableObjects = {};
+        QList<QObject *> ignoreObjects = {}, draggableObjects = {};
         QSize maximumSize = {}, minimumSize = {};
+        QString currentScreen = {};
     };
 
     enum class SystemMetric { BorderWidth, BorderHeight, TitleBarHeight };
 
     explicit WinNativeEventFilter();
-    ~WinNativeEventFilter() override;
+    ~WinNativeEventFilter() override = default;
 
     // Make the given window become frameless.
     // The width and height will be scaled automatically according to DPI. Don't
@@ -136,6 +139,40 @@ public:
                                   const bool isRtl,
                                   const int x,
                                   const int y);
+
+    // Enable or disable the blur effect for a specific window.
+    // On Win10 it's the Acrylic effect.
+    static bool setBlurEffectEnabled(void *handle /* HWND */,
+                                     const bool enabled = true,
+                                     const QColor &gradientColor = Qt::white);
+
+    // Thin wrapper of DwmExtendFrameIntoClientArea().
+    static void updateFrameMargins(void *handle /* HWND */);
+
+    // A resizable window can be resized and maximized, however, a fixed size
+    // window can only be moved and minimized, it can't be resized and maximized.
+    static void setWindowResizable(void *handle /* HWND */, const bool resizable = true);
+
+    // Query whether colorization is enabled or not.
+    static bool colorizationEnabled();
+
+    // Acquire the theme/colorization color set by the user.
+    static QColor colorizationColor();
+
+    // Query whether the user is using the light theme or not.
+    static bool lightThemeEnabled();
+
+    // Query whether the user is using the dark theme or not.
+    static bool darkThemeEnabled();
+
+    // Query whether the high contrast mode is enabled or not.
+    static bool highContrastModeEnabled();
+
+    // Query whether the given window is using dark frame or not.
+    static bool darkFrameEnabled(void *handle /* HWND */);
+
+    // Query whether the transparency effect is enabled or not.
+    static bool transparencyEffectEnabled();
 
     ///////////////////////////////////////////////
     ///   CORE FUNCTION - THE SOUL OF THIS CODE

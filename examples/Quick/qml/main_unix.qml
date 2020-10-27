@@ -50,9 +50,8 @@ Window {
         Text {
             id: titleBarText
             text: window.title
-            font.family: "Noto Sans CJK SC"
             font.pointSize: 13
-            color: "black"
+            color: window.active ? "black" : "gray"
             anchors.left: parent.left
             anchors.leftMargin: 15
             anchors.verticalCenter: parent.verticalCenter
@@ -103,5 +102,5 @@ Window {
         }
     }
 
-    Component.onCompleted: framelessHelper.removeWindowFrame()
+    Component.onCompleted: framelessHelper.removeWindowFrame(true)
 }

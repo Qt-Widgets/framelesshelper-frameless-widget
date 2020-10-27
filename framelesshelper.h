@@ -29,7 +29,6 @@
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
 #include <QHash>
 #include <QObject>
-#include <QPointer>
 #include <QRect>
 
 QT_BEGIN_NAMESPACE
@@ -45,6 +44,8 @@ public:
     explicit FramelessHelper(QObject *parent = nullptr);
     ~FramelessHelper() override = default;
 
+    void removeWindowFrame(QObject *obj, const bool center = false);
+
     static void updateQtFrame(QWindow *window, const int titleBarHeight);
     static void moveWindowToDesktopCenter(QObject *obj);
 
@@ -57,33 +58,23 @@ public:
     int getTitleBarHeight() const;
     void setTitleBarHeight(const int val);
 
-    QList<QRect> getIgnoreAreas(QObject *obj) const;
-    void setIgnoreAreas(QObject *obj, const QList<QRect> &val);
     void addIgnoreArea(QObject *obj, const QRect &val);
-    void clearIgnoreAreas(QObject *obj);
+    QList<QRect> getIgnoreAreas(QObject *obj) const;
 
-    QList<QRect> getDraggableAreas(QObject *obj) const;
-    void setDraggableAreas(QObject *obj, const QList<QRect> &val);
     void addDraggableArea(QObject *obj, const QRect &val);
-    void clearDraggableAreas(QObject *obj);
+    QList<QRect> getDraggableAreas(QObject *obj) const;
 
-    QList<QObject *> getIgnoreObjects(QObject *obj) const;
-    void setIgnoreObjects(QObject *obj, const QList<QObject *> &val);
     void addIgnoreObject(QObject *obj, QObject *val);
-    void clearIgnoreObjects(QObject *obj);
+    QList<QObject *> getIgnoreObjects(QObject *obj) const;
 
-    QList<QObject *> getDraggableObjects(QObject *obj) const;
-    void setDraggableObjects(QObject *obj, const QList<QObject *> &val);
     void addDraggableObject(QObject *obj, QObject *val);
-    void clearDraggableObjects(QObject *obj);
+    QList<QObject *> getDraggableObjects(QObject *obj) const;
 
     bool getResizable(QObject *obj) const;
     void setResizable(QObject *obj, const bool val);
 
     bool getTitleBarEnabled(QObject *obj) const;
     void setTitleBarEnabled(QObject *obj, const bool val);
-
-    void removeWindowFrame(QObject *obj);
 
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -94,7 +85,7 @@ private:
     // platforms through native API.
     int m_borderWidth = 8, m_borderHeight = 8, m_titleBarHeight = 30;
     QHash<QObject *, QList<QRect>> m_ignoreAreas = {}, m_draggableAreas = {};
-    QHash<QObject *, QList<QPointer<QObject>>> m_ignoreObjects = {}, m_draggableObjects = {};
+    QHash<QObject *, QList<QObject *>> m_ignoreObjects = {}, m_draggableObjects = {};
     QHash<QObject *, bool> m_fixedSize = {}, m_disableTitleBar = {};
 };
 #endif
