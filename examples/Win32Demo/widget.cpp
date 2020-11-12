@@ -46,10 +46,6 @@
 #define GET_X_LPARAM(lp) ((int) (short) LOWORD(lp))
 #define GET_Y_LPARAM(lp) ((int) (short) HIWORD(lp))
 
-#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
-#define QLatin1String(str) QString::fromUtf8(str)
-#endif
-
 namespace {
 
 const Widget::Win10Version g_vAcrylicEffectVersion = Widget::Win10Version::Win10_1803;
@@ -89,17 +85,45 @@ const QLatin1String g_sSystemButtonsStyleSheet(R"(
   background-color: #8c0a15;
 }
 )");
-const QLatin1String g_sTitleLabelStyleSheet(R"(
+const
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+    QString
+#else
+    QLatin1String
+#endif
+        g_sTitleLabelStyleSheet(
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+            QString::fromLatin1(
+#endif
+                R"(
 #titleLabel {
   color: rgb(%1, %2, %3);
 }
-)");
-const QLatin1String g_sTitleBarStyleSheet(R"(
+)"
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+                )
+#endif
+        );
+const
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+    QString
+#else
+    QLatin1String
+#endif
+        g_sTitleBarStyleSheet(
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+            QString::fromLatin1(
+#endif
+                R"(
 #titleBarWidget {
   background-color: rgba(%1, %2, %3, %4);
   border-top: 1px solid rgba(%5, %6, %7, %8);
 }
-)");
+)"
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
+                )
+#endif
+        );
 
 const QLatin1String g_sMinimizeButtonImageDark(":/images/button_minimize_black.svg");
 const QLatin1String g_sMaximizeButtonImageDark(":/images/button_maximize_black.svg");
@@ -229,7 +253,11 @@ void Widget::setupUi()
     QFont font1;
     font1.setPointSize(15);
     font1.setBold(true);
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+    font1.setWeight(QFont::Bold);
+#else
     font1.setWeight(75);
+#endif
     customizeTitleBarCB->setFont(font1);
     verticalLayout->addWidget(customizeTitleBarCB);
     preserveWindowFrameCB = new QCheckBox(controlPanelWidget);
@@ -285,18 +313,18 @@ bool Widget::shouldDrawBorder(const bool ignoreWindowState) const
 
 bool Widget::shouldDrawThemedBorder(const bool ignoreWindowState) const
 {
-    return (shouldDrawBorder(ignoreWindowState) && WinNativeEventFilter::colorizationEnabled());
+    return (shouldDrawBorder(ignoreWindowState) && WinNativeEventFilter::isColorizationEnabled());
 }
 
 bool Widget::shouldDrawThemedTitleBar() const
 {
-    return m_bIsWin10OrGreater && WinNativeEventFilter::colorizationEnabled();
+    return m_bIsWin10OrGreater && WinNativeEventFilter::isColorizationEnabled();
 }
 
 QColor Widget::activeBorderColor()
 {
-    return WinNativeEventFilter::colorizationEnabled() ? g_cColorizationColor
-                                                       : g_cDefaultActiveBorderColor;
+    return WinNativeEventFilter::isColorizationEnabled() ? g_cColorizationColor
+                                                         : g_cDefaultActiveBorderColor;
 }
 
 QColor Widget::inactiveBorderColor()
@@ -555,7 +583,7 @@ void Widget::setupConnections()
         }
         WinNativeEventFilter::setBlurEffectEnabled(rawHandle(), enable, color);
         updateWindow();
-        if (useAcrylicEffect && enable && WinNativeEventFilter::transparencyEffectEnabled()) {
+        if (useAcrylicEffect && enable && WinNativeEventFilter::isTransparencyEffectEnabled()) {
             QMessageBox::warning(this,
                                  tr("BUG Warning!"),
                                  tr("You have enabled the transparency effect in the personalize "
@@ -602,7 +630,7 @@ void Widget::initializeVariables()
     m_bIsWin10OrGreater = isWin10OrGreater();
     if (m_bIsWin10OrGreater) {
         m_bCanAcrylicBeEnabled = isWin10OrGreater(g_vAcrylicEffectVersion);
-        g_cColorizationColor = WinNativeEventFilter::colorizationColor();
+        g_cColorizationColor = WinNativeEventFilter::getColorizationColor();
     }
 }
 
