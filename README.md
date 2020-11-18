@@ -52,8 +52,10 @@ If you are using part of or all the code from this repository in your own projec
 
 int main(int argc, char *argv[]) {
     QWidget widget;
+    // Qt's internal function. Make sure it's a top level window.
+    widget.createWinId();
     // Do this before the widget is shown.
-    FramelessWindowsManager::addWindow(&widget);
+    FramelessWindowsManager::addWindow(widget.windowHandle());
     widget.show();
 }
 ```
@@ -65,29 +67,32 @@ Please refer to [the QWidget example](/examples/QWidget/main.cpp) for more detai
 ```cpp
 // Only **TOP LEVEL** QWidgets and QWindows are supported.
 QMainWindow *mainWindow = new QMainWindow;
+// Qt's internal function. Make sure it's a top level window.
+mainWindow->createWinId();
+const QWindow *win = mainWindow->windowHandle();
 // Disable resizing of the given window. Resizing is enabled by default.
-FramelessWindowsManager::setResizable(mainWindow, false);
+FramelessWindowsManager::setResizable(win, false);
 // All the following values should not be DPI-aware, just use the
 // original numbers, assuming the scale factor is 1.0, don't scale
 // them yourself, this code will do the scaling according to DPI
 // internally and automatically.
 // Maximum window size
-FramelessWindowsManager::setMaximumSize(mainWindow, {1280, 720});
+FramelessWindowsManager::setMaximumSize(win, {1280, 720});
 // Minimum window size
-FramelessWindowsManager::setMinimumSize(mainWindow, {800, 540});
+FramelessWindowsManager::setMinimumSize(win, {800, 540});
 // How to set ignore areas:
 // The geometry of something you already know, in window coordinates
-FramelessWindowsManager::addIgnoreArea(mainWindow, {100, 0, 30, 30});
+FramelessWindowsManager::addIgnoreArea(win, {100, 0, 30, 30});
 // The geometry of a widget, in window coordinates.
 // It won't update automatically when the geometry of that widget has
 // changed, so if you want to add a widget, which is in a layout and
 // it's geometry will possibly change, to the ignore list, try the
 // next method (addIgnoreObject) instead.
-FramelessWindowsManager::addIgnoreArea(mainWindow, pushButton_close.geometry());
+FramelessWindowsManager::addIgnoreArea(win, pushButton_close.geometry());
 // The **POINTER** of a QWidget or QQuickItem
-FramelessWindowsManager::addIgnoreObject(mainWindow, ui->pushButton_minimize);
+FramelessWindowsManager::addIgnoreObject(win, ui->pushButton_minimize);
 // Move a QWidget or QWindow to the center of its current desktop.
-FramelessWindowsManager::moveWindowToDesktopCenter(mainWindow);
+FramelessWindowsManager::moveWindowToDesktopCenter(win);
 ```
 
 ## Supported Platforms
@@ -108,7 +113,7 @@ A not too old version of Linux and macOS, 32 bit & 64 bit.
 
 | Component | Requirement | Additional Information |
 | --- | --- | --- |
-| Qt | >= 5.6 | Only the `gui` module is required explicitly, but to make full use of this repository, you'd better install the `widgets` and `quick` modules as well |
+| Qt | >= 5.6 | Only the `core` and `gui` modules are required |
 | Compiler | >= C++11 | MSVC, MinGW, Clang-CL, Intel-CL or cross compile from Linux/macOS are all supported |
 
 ### UNIX

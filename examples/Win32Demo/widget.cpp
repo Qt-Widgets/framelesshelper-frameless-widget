@@ -138,6 +138,7 @@ const QLatin1String g_sCloseButtonImageLight(":/images/button_close_white.svg");
 
 Widget::Widget(QWidget *parent) : QWidget(parent)
 {
+    createWinId(); // Qt's internal function, make sure it's a top level window.
     initializeWindow();
 }
 
@@ -170,7 +171,7 @@ void Widget::setupUi()
     sizePolicy.setHeightForWidth(titleBarWidget->sizePolicy().hasHeightForWidth());
     titleBarWidget->setSizePolicy(sizePolicy);
     const int titleBarHeight
-        = WinNativeEventFilter::getSystemMetric(rawHandle(),
+        = WinNativeEventFilter::getSystemMetric(windowHandle(),
                                                 WinNativeEventFilter::SystemMetric::TitleBarHeight);
     titleBarWidget->setMinimumSize(QSize(0, titleBarHeight));
     titleBarWidget->setMaximumSize(QSize(16777215, titleBarHeight));
@@ -199,7 +200,7 @@ void Widget::setupUi()
     sizePolicy1.setVerticalStretch(0);
     sizePolicy1.setHeightForWidth(minimizeButton->sizePolicy().hasHeightForWidth());
     minimizeButton->setSizePolicy(sizePolicy1);
-    const QSize systemButtonSize = {45, 30};
+    const QSize systemButtonSize = {qRound(titleBarHeight * 1.5), titleBarHeight};
     minimizeButton->setMinimumSize(systemButtonSize);
     minimizeButton->setMaximumSize(systemButtonSize);
     QIcon icon;
@@ -348,11 +349,6 @@ bool Widget::isWin10OrGreater(const Win10Version subVer)
                                               static_cast<int>(subVer))));
 }
 
-void *Widget::rawHandle() const
-{
-    return reinterpret_cast<void *>(winId());
-}
-
 bool Widget::eventFilter(QObject *object, QEvent *event)
 {
     Q_ASSERT(object);
@@ -373,7 +369,7 @@ bool Widget::eventFilter(QObject *object, QEvent *event)
             break;
         }
         case QEvent::WinIdChange:
-            WinNativeEventFilter::addFramelessWindow(this);
+            WinNativeEventFilter::addFramelessWindow(windowHandle());
             break;
         case QEvent::WindowActivate:
         case QEvent::WindowDeactivate:
@@ -400,9 +396,7 @@ bool Widget::nativeEvent(const QByteArray &eventType, void *message, long *resul
         switch (msg->message) {
         case WM_NCRBUTTONUP: {
             if (msg->wParam == HTCAPTION) {
-                const int x = GET_X_LPARAM(msg->lParam);
-                const int y = GET_Y_LPARAM(msg->lParam);
-                if (WinNativeEventFilter::displaySystemMenu(msg->hwnd, false, x, y)) {
+                if (WinNativeEventFilter::displaySystemMenu(windowHandle())) {
                     *result = 0;
                     return true;
                 }
@@ -446,8 +440,8 @@ void Widget::paintEvent(QPaintEvent *event)
 
 void Widget::updateWindow()
 {
-    WinNativeEventFilter::updateFrameMargins(rawHandle());
-    WinNativeEventFilter::updateWindow(rawHandle(), true, true);
+    WinNativeEventFilter::updateFrameMargins(windowHandle());
+    WinNativeEventFilter::updateWindow(windowHandle(), true, true);
     update();
 }
 
@@ -504,7 +498,7 @@ void Widget::initializeOptions()
     if (m_bIsWin10OrGreater) {
         //preserveWindowFrameCB->click();
         if (m_bCanAcrylicBeEnabled) {
-            forceAcrylicCB->click();
+            //forceAcrylicCB->click();
         }
     }
     customizeTitleBarCB->click();
@@ -516,12 +510,6 @@ void Widget::initializeOptions()
 
 void Widget::setupConnections()
 {
-    connect(iconButton, &QPushButton::clicked, this, [this]() {
-        POINT pos = {};
-        GetCursorPos(&pos);
-        const auto hwnd = reinterpret_cast<HWND>(rawHandle());
-        SendMessageW(hwnd, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(hwnd), MAKELPARAM(pos.x, pos.y));
-    });
     connect(minimizeButton, &QPushButton::clicked, this, &Widget::showMinimized);
     connect(maximizeButton, &QPushButton::clicked, this, [this]() {
         if (isMaximized()) {
@@ -532,7 +520,7 @@ void Widget::setupConnections()
     });
     connect(closeButton, &QPushButton::clicked, this, &Widget::close);
     connect(moveCenterButton, &QPushButton::clicked, this, [this]() {
-        WinNativeEventFilter::moveWindowToDesktopCenter(rawHandle());
+        WinNativeEventFilter::moveWindowToDesktopCenter(windowHandle());
     });
     connect(this, &Widget::windowTitleChanged, titleLabel, &QLabel::setText);
     connect(this, &Widget::windowIconChanged, iconButton, &QPushButton::setIcon);
@@ -541,7 +529,7 @@ void Widget::setupConnections()
         preserveWindowFrameCB->setEnabled(enable);
         WinNativeEventFilter::updateQtFrame(windowHandle(),
                                             enable ? WinNativeEventFilter::getSystemMetric(
-                                                rawHandle(),
+                                                windowHandle(),
                                                 WinNativeEventFilter::SystemMetric::TitleBarHeight)
                                                    : 0);
         titleBarWidget->setVisible(enable);
@@ -581,7 +569,16 @@ void Widget::setupConnections()
                                                QColorDialog::ShowAlphaChannel);
             }
         }
-        WinNativeEventFilter::setBlurEffectEnabled(rawHandle(), enable, color);
+        // Qt will paint a solid white background to the window,
+        // it will cover the blurred effect, so we need to
+        // make the background become totally transparent. Achieve
+        // this by setting a palette to the window.
+        QPalette palette = {};
+        if (enable) {
+            palette.setColor(QPalette::Window, Qt::transparent);
+        }
+        setPalette(palette);
+        WinNativeEventFilter::setBlurEffectEnabled(windowHandle(), enable, color);
         updateWindow();
         if (useAcrylicEffect && enable && WinNativeEventFilter::isTransparencyEffectEnabled()) {
             QMessageBox::warning(this,
@@ -613,7 +610,7 @@ void Widget::setupConnections()
     connect(resizableCB, &QCheckBox::stateChanged, this, [this](int state) {
         const bool enable = state == Qt::Checked;
         maximizeButton->setEnabled(enable);
-        WinNativeEventFilter::setWindowResizable(rawHandle(), enable);
+        WinNativeEventFilter::setWindowResizable(windowHandle(), enable);
     });
 }
 
@@ -621,7 +618,7 @@ void Widget::initializeFramelessFunctions()
 {
     WinNativeEventFilter::WINDOWDATA data = {};
     data.ignoreObjects << iconButton << minimizeButton << maximizeButton << closeButton;
-    WinNativeEventFilter::addFramelessWindow(this, &data);
+    WinNativeEventFilter::addFramelessWindow(windowHandle(), &data);
     installEventFilter(this);
 }
 

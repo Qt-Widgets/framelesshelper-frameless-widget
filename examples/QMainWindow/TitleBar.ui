@@ -7,8 +7,26 @@
     <x>0</x>
     <y>0</y>
     <width>423</width>
-    <height>26</height>
+    <height>31</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>0</width>
+    <height>31</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>31</height>
+   </size>
   </property>
   <property name="styleSheet">
    <string notr="true">#iconButton, #minimizeButton, #maximizeButton, #closeButton {
@@ -44,7 +62,7 @@
     <number>0</number>
    </property>
    <property name="topMargin">
-    <number>1</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
     <number>0</number>
@@ -126,14 +144,14 @@
      </property>
      <property name="minimumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="focusPolicy">
@@ -151,8 +169,8 @@
      </property>
      <property name="iconSize">
       <size>
-       <width>45</width>
-       <height>30</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
     </widget>
@@ -167,14 +185,14 @@
      </property>
      <property name="minimumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="focusPolicy">
@@ -193,8 +211,8 @@
      </property>
      <property name="iconSize">
       <size>
-       <width>45</width>
-       <height>30</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="checkable">
@@ -212,14 +230,14 @@
      </property>
      <property name="minimumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>45</width>
-       <height>26</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
      <property name="focusPolicy">
@@ -237,8 +255,8 @@
      </property>
      <property name="iconSize">
       <size>
-       <width>45</width>
-       <height>30</height>
+       <width>46</width>
+       <height>31</height>
       </size>
      </property>
     </widget>

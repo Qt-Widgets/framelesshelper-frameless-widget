@@ -136,7 +136,7 @@ bool FramelessQuickHelper::highContrastModeEnabled() const
 
 bool FramelessQuickHelper::darkFrameEnabled() const
 {
-    return WinNativeEventFilter::isDarkFrameEnabled(rawHandle());
+    return WinNativeEventFilter::isDarkFrameEnabled(window());
 }
 
 bool FramelessQuickHelper::transparencyEffectEnabled() const
@@ -172,24 +172,9 @@ void FramelessQuickHelper::removeWindowFrame(const bool center)
     FramelessWindowsManager::addWindow(window(), center);
 }
 
-QSize FramelessQuickHelper::desktopSize() const
+void FramelessQuickHelper::moveWindowToDesktopCenter()
 {
-    return FramelessWindowsManager::getDesktopSize(window());
-}
-
-QRect FramelessQuickHelper::desktopAvailableGeometry() const
-{
-    return FramelessWindowsManager::getDesktopAvailableGeometry(window());
-}
-
-QSize FramelessQuickHelper::desktopAvailableSize() const
-{
-    return FramelessWindowsManager::getDesktopAvailableSize(window());
-}
-
-void FramelessQuickHelper::moveWindowToDesktopCenter(const bool realCenter)
-{
-    FramelessWindowsManager::moveWindowToDesktopCenter(window(), realCenter);
+    FramelessWindowsManager::moveWindowToDesktopCenter(window());
 }
 
 void FramelessQuickHelper::addIgnoreArea(const QRect &val)
@@ -227,15 +212,6 @@ void FramelessQuickHelper::timerEvent(QTimerEvent *event)
     Q_EMIT transparencyEffectEnabledChanged(transparencyEffectEnabled());
 }
 
-void *FramelessQuickHelper::rawHandle() const
-{
-    QWindow *win = window();
-    if (win) {
-        return reinterpret_cast<void *>(win->winId());
-    }
-    return nullptr;
-}
-
 void FramelessQuickHelper::setWindowFrameVisible(const bool value)
 {
     if (value) {
@@ -247,9 +223,9 @@ void FramelessQuickHelper::setWindowFrameVisible(const bool value)
     }
 }
 
-void FramelessQuickHelper::displaySystemMenu(const int x, const int y, const bool isRtl)
+void FramelessQuickHelper::displaySystemMenu(const QPointF &pos)
 {
-    WinNativeEventFilter::displaySystemMenu(rawHandle(), isRtl, x, y);
+    WinNativeEventFilter::displaySystemMenu(window(), pos);
 }
 
 void FramelessQuickHelper::setBlurEffectEnabled(const bool enabled,
@@ -261,6 +237,6 @@ void FramelessQuickHelper::setBlurEffectEnabled(const bool enabled,
     } else {
         qunsetenv(g_sForceUseAcrylicEffect);
     }
-    WinNativeEventFilter::setBlurEffectEnabled(rawHandle(), enabled, gradientColor);
+    WinNativeEventFilter::setBlurEffectEnabled(window(), enabled, gradientColor);
 }
 #endif
