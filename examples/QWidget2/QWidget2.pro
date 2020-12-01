@@ -1,6 +1,6 @@
-TARGET = Win32Demo
+TARGET = QWidget2
 TEMPLATE = app
-QT += gui-private widgets
+QT += widgets
 HEADERS += widget.h
 SOURCES += widget.cpp main.cpp
 include($$PWD/../common.pri)
