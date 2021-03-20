@@ -2,17 +2,7 @@
 
 ## Screenshots
 
-![Win32Demo 1](/screenshots/win32demo1.png)
-
-![Win32Demo 2](/screenshots/win32demo2.png)
-
-![Win32Demo 3](/screenshots/win32demo3.png)
-
-![Win32Demo 4](/screenshots/win32demo4.png)
-
-![Win32Demo 5](/screenshots/win32demo5.png)
-
-![Win32Demo 6](/screenshots/win32demo6.png)
+![Quick_Acrylic_Win7](/screenshots/quick_acrylic_win7.png)
 
 ## Features
 
@@ -24,8 +14,7 @@
 - Support tiled and stack windows by DWM.
 - Won't cover the task bar when maximized.
 - Won't block the auto-hide task bar when maximized.
-- No flickers when resizing.
-- Load all Win32 APIs at run-time, no need to link to any system libraries directly.
+- Support blur effect inspired by [Microsoft's Acrylic blur](https://docs.microsoft.com/en-us/windows/uwp/design/style/acrylic).
 
 ## Usage
 
@@ -165,7 +154,7 @@ Thanks [**Julien Maille**](https://github.com/JulienMaille) for adding the `QMai
 ```text
 MIT License
 
-Copyright (C) 2020 by wangwenx190 (Yuhang Zhao)
+Copyright (C) 2021 by wangwenx190 (Yuhang Zhao)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

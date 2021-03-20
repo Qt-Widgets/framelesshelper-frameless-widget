@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (C) 2020 by wangwenx190 (Yuhang Zhao)
+ * Copyright (C) 2021 by wangwenx190 (Yuhang Zhao)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,42 +22,41 @@
  * SOFTWARE.
  */
 
-#include <windows.h>
+#pragma once
 
-IDI_ICON1 ICON "windows.ico"
+#include "framelesshelper_global.h"
+#include <QtCore/qcoreevent.h>
+#include <QtCore/qabstractnativeeventfilter.h>
 
-//CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "windows.manifest"
+class FRAMELESSHELPER_EXPORT QtAcrylicWinUpdateEvent : public QEvent
+{
+public:
+    static const int QtAcrylicEffectChangeEventId;
 
-VS_VERSION_INFO VERSIONINFO
-FILEVERSION     1,0,0,0
-PRODUCTVERSION  1,0,0,0
-FILEFLAGSMASK   0x3fL
-#ifdef _DEBUG
-FILEFLAGS       VS_FF_DEBUG
+    explicit QtAcrylicWinUpdateEvent(const bool clearWallpaper = false);
+    ~QtAcrylicWinUpdateEvent() override;
+
+    inline bool shouldClearPreviousWallpaper() const
+    {
+        return m_shouldClearPreviousWallpaper;
+    }
+
+private:
+    bool m_shouldClearPreviousWallpaper = false;
+};
+
+class FRAMELESSHELPER_EXPORT QtAcrylicWinEventFilter : public QAbstractNativeEventFilter
+{
+public:
+    explicit QtAcrylicWinEventFilter();
+    ~QtAcrylicWinEventFilter() override;
+
+    static void setup();
+    static void unsetup();
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
 #else
-FILEFLAGS       0x0L
+    bool nativeEventFilter(const QByteArray &eventType, void *message, long *result) override;
 #endif
-FILEOS          VOS_NT_WINDOWS32
-FILETYPE        VFT_APP
-FILESUBTYPE     VFT2_UNKNOWN
-BEGIN
-    BLOCK "StringFileInfo"
-    BEGIN
-        BLOCK "040904b0"
-        BEGIN
-            VALUE "Comments",         "Built by the Qt Toolkit."
-            VALUE "CompanyName",      "wangwenx190"
-            VALUE "FileDescription",  "A FramelessHelper based Qt application."
-            VALUE "FileVersion",      "1.0.0.0"
-            VALUE "InternalName",     ""
-            VALUE "LegalCopyright",   "MIT License"
-            VALUE "OriginalFilename", ""
-            VALUE "ProductName",      "Test Application"
-            VALUE "ProductVersion",   "1.0.0.0"
-        END
-    END
-    BLOCK "VarFileInfo"
-    BEGIN
-        VALUE "Translation", 0x409, 1200
-    END
-END
+};

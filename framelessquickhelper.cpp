@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (C) 2020 by wangwenx190 (Yuhang Zhao)
+ * Copyright (C) 2021 by wangwenx190 (Yuhang Zhao)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,28 +23,13 @@
  */
 
 #include "framelessquickhelper.h"
-
 #include "framelesswindowsmanager.h"
-#include <QQuickWindow>
-#ifdef Q_OS_WINDOWS
-#include "winnativeeventfilter.h"
-#include <QOperatingSystemVersion>
-#endif
-
-#ifdef Q_OS_WINDOWS
-namespace {
-
-const char g_sPreserveWindowFrame[] = "WNEF_FORCE_PRESERVE_WINDOW_FRAME";
-const char g_sForceUseAcrylicEffect[] = "WNEF_FORCE_ACRYLIC_ON_WIN10";
-
-} // namespace
-#endif
+#include <QtQuick/qquickwindow.h>
+#include "utilities.h"
 
 FramelessQuickHelper::FramelessQuickHelper(QQuickItem *parent) : QQuickItem(parent)
 {
-#ifdef Q_OS_WINDOWS
     startTimer(500);
-#endif
 }
 
 int FramelessQuickHelper::borderWidth() const
@@ -91,45 +76,40 @@ void FramelessQuickHelper::setResizable(const bool val)
     Q_EMIT resizableChanged(val);
 }
 
-#ifdef Q_OS_WINDOWS
-bool FramelessQuickHelper::canHaveWindowFrame() const
-{
-    return QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10;
-}
-
-bool FramelessQuickHelper::colorizationEnabled() const
-{
-    return WinNativeEventFilter::isColorizationEnabled();
-}
-
-QColor FramelessQuickHelper::colorizationColor() const
-{
-    return WinNativeEventFilter::getColorizationColor();
-}
-
 bool FramelessQuickHelper::lightThemeEnabled() const
 {
-    return WinNativeEventFilter::isLightThemeEnabled();
+    return Utilities::isLightThemeEnabled();
 }
 
 bool FramelessQuickHelper::darkThemeEnabled() const
 {
-    return WinNativeEventFilter::isDarkThemeEnabled();
+    return Utilities::isDarkThemeEnabled();
+}
+
+#ifdef Q_OS_WINDOWS
+bool FramelessQuickHelper::colorizationEnabled() const
+{
+    return Utilities::isColorizationEnabled();
+}
+
+QColor FramelessQuickHelper::colorizationColor() const
+{
+    return Utilities::getColorizationColor();
 }
 
 bool FramelessQuickHelper::highContrastModeEnabled() const
 {
-    return WinNativeEventFilter::isHighContrastModeEnabled();
+    return Utilities::isHighContrastModeEnabled();
 }
 
 bool FramelessQuickHelper::darkFrameEnabled() const
 {
-    return WinNativeEventFilter::isDarkFrameEnabled(window());
+    return Utilities::isDarkFrameEnabled(window());
 }
 
 bool FramelessQuickHelper::transparencyEffectEnabled() const
 {
-    return WinNativeEventFilter::isTransparencyEffectEnabled();
+    return Utilities::isTransparencyEffectEnabled();
 }
 #endif
 
@@ -141,40 +121,27 @@ void FramelessQuickHelper::removeWindowFrame()
 void FramelessQuickHelper::addIgnoreObject(QQuickItem *val)
 {
     Q_ASSERT(val);
+    if (!val) {
+        return;
+    }
     FramelessWindowsManager::addIgnoreObject(window(), val);
 }
 
-#ifdef Q_OS_WINDOWS
 void FramelessQuickHelper::timerEvent(QTimerEvent *event)
 {
     QQuickItem::timerEvent(event);
-    Q_EMIT colorizationEnabledChanged(colorizationEnabled());
-    Q_EMIT colorizationColorChanged(colorizationColor());
     Q_EMIT lightThemeEnabledChanged(lightThemeEnabled());
     Q_EMIT darkThemeEnabledChanged(darkThemeEnabled());
+#ifdef Q_OS_WINDOWS
+    Q_EMIT colorizationEnabledChanged(colorizationEnabled());
+    Q_EMIT colorizationColorChanged(colorizationColor());
     Q_EMIT highContrastModeEnabledChanged(highContrastModeEnabled());
     Q_EMIT darkFrameEnabledChanged(darkFrameEnabled());
     Q_EMIT transparencyEffectEnabledChanged(transparencyEffectEnabled());
-}
-
-void FramelessQuickHelper::setWindowFrameVisible(const bool value)
-{
-    if (value) {
-        qputenv(g_sPreserveWindowFrame, "1");
-    } else {
-        qunsetenv(g_sPreserveWindowFrame);
-    }
-}
-
-void FramelessQuickHelper::setBlurEffectEnabled(const bool enabled,
-                                                const bool forceAcrylic,
-                                                const QColor &gradientColor)
-{
-    if (forceAcrylic) {
-        qputenv(g_sForceUseAcrylicEffect, "1");
-    } else {
-        qunsetenv(g_sForceUseAcrylicEffect);
-    }
-    WinNativeEventFilter::setBlurEffectEnabled(window(), enabled, gradientColor);
-}
 #endif
+}
+
+void FramelessQuickHelper::setBlurEffectEnabled(const bool enabled, const QColor &gradientColor)
+{
+    Utilities::setBlurEffectEnabled(window(), enabled, gradientColor);
+}

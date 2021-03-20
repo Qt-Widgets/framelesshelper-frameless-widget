@@ -9,7 +9,8 @@ TODO
 - Frameless (of course!).
 - Draggable.
 - Resizable.
-- Cross-platform: Windows, X11, Wayland, macOS (however, it doesn't look good on Windows, so you may want to try [`WinNativeEventFilter`](/winnativeeventfilter.h) instead).
+- Cross-platform: Windows, X11, Wayland, macOS (however, it doesn't look good on Windows, so you may want to try [`FramelessHelperWin`](/framelesshelper_win32.h) instead).
+- Support blur effect inspired by [Microsoft's Acrylic blur](https://docs.microsoft.com/en-us/windows/uwp/design/style/acrylic).
 
 As for the frame shadow and other window features, they mainly depend on your window manager.
 
@@ -47,7 +48,7 @@ helper.setIgnoreAreas(&widget, {{0, 0, 30, 40}, {40, 0, 30, 40}});
 ```text
 MIT License
 
-Copyright (C) 2020 by wangwenx190 (Yuhang Zhao)
+Copyright (C) 2021 by wangwenx190 (Yuhang Zhao)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
