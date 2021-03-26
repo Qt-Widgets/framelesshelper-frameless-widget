@@ -29,7 +29,7 @@
 #include <QtGui/qwindow.h>
 #include <QtCore/qcoreapplication.h>
 
-QtAcrylicEffectHelper::QtAcrylicEffectHelper()
+QtAcrylicEffectHelper::QtAcrylicEffectHelper(QObject *parent) : QObject(parent)
 {
     Q_INIT_RESOURCE(qtacrylichelper);
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
@@ -44,6 +44,8 @@ QtAcrylicEffectHelper::QtAcrylicEffectHelper()
     m_frameColor = Qt::black;
 #endif
 }
+
+QtAcrylicEffectHelper::~QtAcrylicEffectHelper() = default;
 
 void QtAcrylicEffectHelper::install(const QWindow *window)
 {
@@ -85,6 +87,11 @@ void QtAcrylicEffectHelper::clearWallpaper()
     if (!m_bluredWallpaper.isNull()) {
         m_bluredWallpaper = {};
     }
+}
+
+void QtAcrylicEffectHelper::showWarning() const
+{
+    qDebug() << "The Acrylic blur effect has been enabled. Rendering acrylic material surfaces is highly GPU-intensive, which can slow down the application, increase the power consumption on the devices on which the application is running.";
 }
 
 QBrush QtAcrylicEffectHelper::getAcrylicBrush() const
@@ -164,8 +171,6 @@ void QtAcrylicEffectHelper::setFrameThickness(const qreal value)
         m_frameThickness = value;
     }
 }
-
-QtAcrylicEffectHelper::~QtAcrylicEffectHelper() = default;
 
 void QtAcrylicEffectHelper::paintWindowBackground(QPainter *painter, const QRegion &clip)
 {
@@ -294,10 +299,13 @@ void QtAcrylicEffectHelper::updateAcrylicBrush(const QColor &alternativeTintColo
 
 void QtAcrylicEffectHelper::updateBehindWindowBackground()
 {
+    if (!checkWindow()) {
+        return;
+    }
     if (!m_bluredWallpaper.isNull()) {
         return;
     }
-    const QSize size = Utilities::getScreenAvailableGeometry().size();
+    const QSize size = Utilities::getScreenGeometry(m_window).size();
     m_bluredWallpaper = QPixmap(size);
     m_bluredWallpaper.fill(Qt::transparent);
     QImage image = Utilities::getDesktopWallpaperImage();
@@ -308,18 +316,21 @@ void QtAcrylicEffectHelper::updateBehindWindowBackground()
     const Utilities::DesktopWallpaperAspectStyle aspectStyle = Utilities::getDesktopWallpaperAspectStyle();
     QImage buffer(size, QImage::Format_ARGB32_Premultiplied);
 #ifdef Q_OS_WINDOWS
-    if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::Central) {
-        buffer.fill(Qt::black);
+    if ((aspectStyle == Utilities::DesktopWallpaperAspectStyle::Central) ||
+            (aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatioFit)) {
+        buffer.fill(Utilities::getDesktopBackgroundColor());
     }
 #endif
-    if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::IgnoreRatio ||
-            aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatio ||
+    if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::IgnoreRatioFit ||
+            aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatioFit ||
             aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatioByExpanding) {
-        Qt::AspectRatioMode mode = Qt::KeepAspectRatioByExpanding;
-        if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::IgnoreRatio) {
+        Qt::AspectRatioMode mode;
+        if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::IgnoreRatioFit) {
             mode = Qt::IgnoreAspectRatio;
-        } else if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatio) {
+        } else if (aspectStyle == Utilities::DesktopWallpaperAspectStyle::KeepRatioFit) {
             mode = Qt::KeepAspectRatio;
+        } else {
+            mode = Qt::KeepAspectRatioByExpanding;
         }
         QSize newSize = image.size();
         newSize.scale(size, mode);

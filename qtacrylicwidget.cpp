@@ -24,7 +24,6 @@
 
 #include "qtacrylicwidget.h"
 #include "utilities.h"
-#include "framelesswindowsmanager.h"
 #include <QtCore/qdebug.h>
 #include <QtGui/qevent.h>
 #include <QtGui/qpainter.h>
@@ -152,6 +151,9 @@ void QtAcrylicWidget::setAcrylicEnabled(const bool value)
         setBackgroundRole(m_acrylicEnabled ? QPalette::Base : QPalette::Window);
         update();
         Q_EMIT acrylicEnabledChanged();
+        if (m_acrylicEnabled) {
+            m_acrylicHelper.showWarning();
+        }
     }
 }
 
@@ -159,11 +161,9 @@ void QtAcrylicWidget::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
     if (!m_inited) {
-        FramelessWindowsManager::addWindow(windowHandle());
         m_acrylicHelper.install(windowHandle());
         m_acrylicHelper.updateAcrylicBrush(tintColor());
         connect(&m_acrylicHelper, &QtAcrylicEffectHelper::needsRepaint, this, qOverload<>(&QtAcrylicWidget::update));
-        setAcrylicEnabled(true);
         m_inited = true;
     }
 }

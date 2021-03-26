@@ -170,5 +170,8 @@ void QtAcrylicItem::setAcrylicEnabled(const bool value)
         m_acrylicEnabled = value;
         update();
         Q_EMIT acrylicEnabledChanged();
+        if (m_acrylicEnabled) {
+            m_acrylicHelper.showWarning();
+        }
     }
 }

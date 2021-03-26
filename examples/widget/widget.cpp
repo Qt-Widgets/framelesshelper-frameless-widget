@@ -23,7 +23,6 @@
  */
 
 #include "widget.h"
-#include <QtGui/qscreen.h>
 #include <QtWidgets/qlayout.h>
 #include <QtWidgets/qlabel.h>
 #include <QtCore/qdatetime.h>
@@ -43,16 +42,41 @@ Widget::~Widget() = default;
 
 void Widget::moveToDesktopCenter()
 {
-    const QSize ss = screen()->size();
+    const QSize ss = Utilities::getScreenGeometry(nullptr).size();
     const int newX = (ss.width() - width()) / 2;
     const int newY = (ss.height() - height()) / 2;
     move(newX, newY);
+}
+
+void Widget::showEvent(QShowEvent *event)
+{
+    QtAcrylicWidget::showEvent(event);
+    static bool inited = false;
+    if (!inited) {
+        FramelessWindowsManager::addWindow(windowHandle());
+        setAcrylicEnabled(true);
+        inited = true;
+    }
 }
 
 void Widget::timerEvent(QTimerEvent *event)
 {
     QtAcrylicWidget::timerEvent(event);
     m_label->setText(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")));
+}
+
+void Widget::changeEvent(QEvent *event)
+{
+    QtAcrylicWidget::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange) {
+        if (isMaximized() || isFullScreen()) {
+            layout()->setContentsMargins(0, 0, 0, 0);
+            m_maximizeButton->setIcon(QIcon{QStringLiteral(":/images/button_restore_black.svg")});
+        } else if (!isMinimized()) {
+            layout()->setContentsMargins(1, 1, 1, 1);
+            m_maximizeButton->setIcon(QIcon{QStringLiteral(":/images/button_maximize_black.svg")});
+        }
+    }
 }
 
 void Widget::setupUi()
@@ -72,7 +96,7 @@ void Widget::setupUi()
     m_maximizeButton->setIcon(QIcon{QStringLiteral(":/images/button_maximize_black.svg")});
     m_maximizeButton->setIconSize(systemButtonSize);
     connect(m_maximizeButton, &QPushButton::clicked, this, [this](){
-        if (isMaximized()) {
+        if (isMaximized() || isFullScreen()) {
             showNormal();
             m_maximizeButton->setIcon(QIcon{QStringLiteral(":/images/button_maximize_black.svg")});
         } else {
